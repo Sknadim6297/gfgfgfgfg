@@ -789,6 +789,16 @@ button.profile-action-button[hidden] {
     overflow-wrap: anywhere;
 }
 
+.wallet-pin-verified {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    color: #74dfa0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .wallet-pin-testing-otp {
     margin: 0;
     padding: 8px 10px;
@@ -1302,5 +1312,243 @@ button.profile-action-button[hidden] {
 
     .profile-balance-card {
         min-height: 105px;
+    }
+}
+
+.referral-dashboard {
+    width: min(100% - 28px, 760px);
+}
+
+.referral-dashboard-card {
+    padding: clamp(20px, 4vw, 32px);
+}
+
+.referral-dashboard-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid #292d34;
+}
+
+.referral-dashboard-heading h1 {
+    margin: 0 0 5px;
+    color: #fff;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 700;
+}
+
+.referral-dashboard-heading p {
+    margin: 0;
+    color: #a0a6b0;
+    font-size: 13px;
+}
+
+.referral-earned {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 3px;
+    text-align: right;
+}
+
+.referral-earned span,
+.referral-detail-label {
+    color: #a0a6b0;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.referral-earned strong {
+    color: #f3ca35;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.referral-levels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 30px 0;
+    padding: 0;
+    list-style: none;
+}
+
+.referral-level {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    text-align: center;
+}
+
+.referral-level:not(:last-child)::after {
+    position: absolute;
+    top: 20px;
+    left: calc(50% + 24px);
+    width: calc(100% - 48px);
+    height: 1px;
+    background: #454a53;
+    content: "";
+}
+
+.referral-level-marker {
+    z-index: 1;
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    margin-bottom: 5px;
+    border: 1px solid #646a75;
+    border-radius: 50%;
+    background: #191c22;
+    color: #c7cbd1;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.referral-level.is-active .referral-level-marker {
+    border-color: #d9b72e;
+    color: #f3ca35;
+}
+
+.referral-level strong {
+    color: #f3f4f6;
+    font-size: 13px;
+}
+
+.referral-level-amount {
+    color: #f3ca35;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.referral-level-status {
+    color: #858b95;
+    font-size: 10px;
+}
+
+.referral-level.is-inactive .referral-level-amount {
+    color: #a0a6b0;
+}
+
+.referral-details {
+    display: grid;
+    gap: 16px;
+    padding-top: 20px;
+    border-top: 1px solid #292d34;
+}
+
+.referral-detail {
+    display: grid;
+    min-width: 0;
+    gap: 7px;
+}
+
+.referral-code-value {
+    color: #f3f4f6;
+    font-size: 14px;
+    letter-spacing: .04em;
+}
+
+.referral-link-field {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+}
+
+.referral-link-field input {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.referral-copy-button {
+    position: relative;
+    display: inline-flex;
+    min-height: 46px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 14px;
+    border: 1px solid #484d58;
+    border-radius: 10px;
+    background: #252932;
+    color: #edc638;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.referral-copy-button:hover {
+    background: #2d323c;
+}
+
+.referral-copy-button [data-copy-feedback] {
+    position: absolute;
+    top: calc(100% + 2px);
+    right: 0;
+    color: #80dba0;
+    font-size: 9px;
+    white-space: nowrap;
+}
+
+.referral-history-link {
+    display: inline-block;
+    margin-top: 18px;
+    color: #aeb4be;
+    font-size: 11px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.referral-history-link:hover {
+    color: #f3ca35;
+}
+
+@media (max-width: 480px) {
+    .referral-dashboard-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .referral-earned {
+        text-align: left;
+    }
+
+    .referral-levels {
+        margin: 24px 0;
+    }
+
+    .referral-level:not(:last-child)::after {
+        left: calc(50% + 20px);
+        width: calc(100% - 40px);
+    }
+
+    .referral-level-marker {
+        width: 36px;
+        height: 36px;
+    }
+
+    .referral-level:not(:last-child)::after {
+        top: 17px;
+    }
+
+    .referral-level strong,
+    .referral-level-amount {
+        font-size: 11px;
+    }
+
+    .referral-link-field {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .referral-copy-button {
+        width: 100%;
     }
 }

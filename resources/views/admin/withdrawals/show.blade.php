@@ -56,7 +56,14 @@
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">AUDIT TRAIL</span><h2>Request history</h2></div></div>
         <div class="admin-activity-list">
             @forelse ($audit as $entry)
-                <article class="admin-activity-item admin-activity-item-stacked"><span class="admin-activity-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span><div class="admin-activity-copy"><strong>{{ str_replace('_', ' ', $entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'System' }} · {{ $entry->created_at->format('M j, Y · H:i') }}</span><pre class="admin-pre">{{ json_encode($entry->metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre></div></article>
+                <article class="admin-activity-item admin-activity-item-stacked">
+                    <span class="admin-activity-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span>
+                    <div class="admin-activity-copy">
+                        <strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong>
+                        <span>{{ $entry->actor?->name ?? 'System' }} · <time datetime="{{ $entry->created_at->toIso8601String() }}">{{ $entry->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</time></span>
+                        <x-admin.audit-metadata :metadata="$entry->metadata" :event="$entry->event" />
+                    </div>
+                </article>
             @empty<div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No audit history</strong></div>@endforelse
         </div>
     </section>

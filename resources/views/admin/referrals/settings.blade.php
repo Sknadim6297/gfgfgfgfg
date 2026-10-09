@@ -64,8 +64,8 @@
                 <article class="admin-activity-item">
                     <span class="admin-activity-icon"><i class="bi bi-sliders" aria-hidden="true"></i></span>
                     <div class="admin-activity-copy">
-                        <strong>Level {{ $after['level'] ?? $before['level'] ?? '—' }} {{ str($entry->event)->afterLast('_')->replace('_', ' ') }}</strong>
-                        <span>{{ $entry->actor?->name ?? 'Administrator' }} · {{ $entry->created_at->format('M j, Y · H:i') }}</span>
+                        <strong>Level {{ $after['level'] ?? $before['level'] ?? '—' }} · {{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong>
+                        <span>{{ $entry->actor?->name ?? 'Administrator' }} · {{ $entry->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</span>
                         <span>{{ isset($before['amount']) ? \App\Support\Money::formatInr((string) $before['amount']) : '—' }} / {{ ($before['is_active'] ?? false) ? 'Active' : 'Inactive' }} → {{ isset($after['amount']) ? \App\Support\Money::formatInr((string) $after['amount']) : '—' }} / {{ ($after['is_active'] ?? false) ? 'Active' : 'Inactive' }}</span>
                     </div>
                 </article>

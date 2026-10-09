@@ -152,6 +152,18 @@ class SellRequestWorkflowTest extends TestCase
             'amount' => '500000.00',
         ]);
         $this->assertDatabaseHas('audit_logs', ['event' => 'SELL_REQUEST_APPROVED']);
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.exchanges.show', $exchange))
+            ->assertOk()
+            ->assertSee('Sell Request Approved')
+            ->assertSee('Customer ID')
+            ->assertSee('USDT Amount')
+            ->assertSee('5,000.000000 USDT')
+            ->assertSee('Exchange Rate')
+            ->assertSee('₹100 / USDT')
+            ->assertSee('INR Amount')
+            ->assertSee('₹500,000.00')
+            ->assertDontSee('"usdt_amount"');
 
         $this->post(route('admin.exchanges.approve', $exchange))->assertConflict();
         $this->assertSame(1, BalanceLedgerEntry::where('source_id', $exchange->id)->where('entry_type', 'debit')->count());

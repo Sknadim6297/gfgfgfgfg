@@ -222,6 +222,15 @@ class WalletTest extends TestCase
             'amount' => '300.00',
         ]);
         $this->assertDatabaseHas('audit_logs', ['event' => 'admin.withdrawal_rejected']);
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.withdrawals.show', $withdrawal))
+            ->assertOk()
+            ->assertSee('Withdrawal Rejected')
+            ->assertSee('Amount')
+            ->assertSee('₹300.00')
+            ->assertSee('Rejection Reason')
+            ->assertSee('We could not verify the payout destination.')
+            ->assertDontSee('"rejection_reason"');
         $this->actingAs($customer, 'web')
             ->get(route('wallet.withdrawals.show', $withdrawal))
             ->assertOk()

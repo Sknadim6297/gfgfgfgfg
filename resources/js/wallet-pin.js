@@ -1,25 +1,69 @@
 import Swal from 'sweetalert2';
 import { showNotification } from './notification-popups';
+import { createRequestGuard, releaseFocusWithin, restoreFocus } from './wallet-pin-helpers';
 
 document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
-    const instance = window.bootstrap?.Modal.getOrCreateInstance(modal);
-    if (!instance) return;
+    const required = (selector) => {
+        const element = modal.querySelector(selector);
+        if (!element) {
+            throw new Error(`Wallet PIN modal is missing required element: ${selector}`);
+        }
 
-    const purpose = modal.querySelector('[data-pin-purpose]');
-    const title = modal.querySelector('[data-pin-title]');
-    const codeInput = modal.querySelector('[data-pin-code]');
+        return element;
+    };
+    const instance = window.bootstrap?.Modal.getOrCreateInstance(modal);
+    if (!instance) {
+        throw new Error('Wallet PIN modal requires Bootstrap Modal to be loaded before app.js.');
+    }
+
+    const purpose = required('[data-pin-purpose]');
+    const title = required('[data-pin-title]');
+    const codeInput = required('[data-pin-code]');
     const otpDigits = [...modal.querySelectorAll('[data-pin-otp-digit]')];
     const pinGroups = [...document.querySelectorAll('[data-pin-input-group]')];
     const testingOtp = modal.querySelector('[data-pin-testing-otp]');
     const testingOtpValue = modal.querySelector('[data-pin-testing-otp-value]');
+    if (Boolean(testingOtp) !== Boolean(testingOtpValue)) {
+        throw new Error('Wallet PIN modal must include both testing OTP elements or neither.');
+    }
     const sendButtons = [...modal.querySelectorAll('[data-pin-send], [data-pin-resend]')];
-    const resendButton = modal.querySelector('[data-pin-resend]');
-    const countdown = modal.querySelector('[data-pin-countdown]');
-    let requestPending = false;
+    const resendButton = required('[data-pin-resend]');
+    const countdown = required('[data-pin-countdown]');
+    let pendingPurpose = modal.dataset.pendingPurpose || null;
+    let verifiedPurpose = modal.dataset.verifiedPurpose || null;
+    const requestGuard = createRequestGuard();
+    let modalOpener = null;
     let rateLimitUntil = 0;
     let resendCooldownUntil = 0;
     let countdownTimer = null;
     const steps = [...modal.querySelectorAll('[data-pin-step]')];
+    const stepNames = steps.map((step) => step.dataset.pinStep);
+    for (const stepName of ['send', 'verify', 'save']) {
+        if (stepNames.filter((name) => name === stepName).length !== 1) {
+            throw new Error(`Wallet PIN modal must contain exactly one "${stepName}" step.`);
+        }
+    }
+    if (steps.length !== 3) {
+        throw new Error(`Wallet PIN modal requires exactly 3 steps; found ${steps.length}.`);
+    }
+    if (otpDigits.length !== 6) {
+        throw new Error(`Wallet PIN modal requires 6 OTP digit fields; found ${otpDigits.length}.`);
+    }
+    required('[data-pin-send]');
+    required('[data-pin-verify]');
+    required('[data-pin-save]');
+    required('[data-pin-new]');
+    required('[data-pin-confirm]');
+    required('[data-pin-csrf]');
+    for (const attribute of ['sendUrl', 'verifyUrl', 'saveUrl']) {
+        if (!modal.dataset[attribute]) {
+            throw new Error(`Wallet PIN modal is missing its ${attribute} endpoint.`);
+        }
+    }
+    const modalPinGroups = [...modal.querySelectorAll('[data-pin-input-group]')];
+    if (modalPinGroups.length !== 2 || modalPinGroups.some((group) => group.querySelectorAll('[data-pin-digit]').length !== 4)) {
+        throw new Error('Wallet PIN modal requires two four-digit PIN input groups.');
+    }
     const showStep = (name) => steps.forEach((step) => { step.hidden = step.dataset.pinStep !== name; });
     const otpValue = () => otpDigits.map((input) => input.value).join('');
     const syncOtpValue = () => { codeInput.value = otpValue(); };
@@ -45,8 +89,10 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
         sendButtons.forEach((button) => {
             const rateLimited = rateLimitSeconds > 0;
             const coolingDown = button === resendButton && cooldownSeconds > 0;
-            button.disabled = requestPending || rateLimited || coolingDown;
+            button.disabled = requestGuard.pending || rateLimited || coolingDown;
         });
+        required('[data-pin-verify]').disabled = requestGuard.pending;
+        required('[data-pin-save]').disabled = requestGuard.pending;
 
         if (rateLimitSeconds > 0) {
             countdown.hidden = false;
@@ -79,6 +125,21 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
         resendCooldownUntil = Date.now() + 60_000;
         startCountdown();
     };
+    const notify = async (message, type, returnFocus = null) => {
+        releaseFocusWithin(document.activeElement, modal, modal.closest('.main-wrapper'));
+        await showNotification(Swal, message, type);
+
+        const target = modal.classList.contains('show') ? returnFocus : modalOpener;
+        window.setTimeout(() => restoreFocus(target), 0);
+    };
+    const hideModal = () => new Promise((resolve) => {
+        if (!modal.classList.contains('show')) {
+            resolve();
+            return;
+        }
+        modal.addEventListener('hidden.bs.modal', resolve, { once: true });
+        instance.hide();
+    });
     const pinGroupDigits = (group) => [...group.querySelectorAll('[data-pin-digit]')];
     const updatePinValue = (group) => {
         const value = pinGroupDigits(group).map((input) => input.value).join('');
@@ -99,13 +160,16 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
     };
     const setPurpose = (value) => {
         purpose.value = value;
-        showStep('send');
-        title.textContent = 'Wallet Transaction PIN';
+        const isVerified = verifiedPurpose === value;
+        showStep(isVerified ? 'save' : pendingPurpose === value ? 'verify' : 'send');
+        title.textContent = isVerified ? 'Create Wallet Transaction PIN' : 'Wallet Transaction PIN';
         clearOtp();
-        testingOtp.hidden = true;
-        testingOtpValue.textContent = '';
-        modal.querySelector('[data-pin-new]').value = '';
-        modal.querySelector('[data-pin-confirm]').value = '';
+        if (testingOtp && testingOtpValue) {
+            testingOtp.hidden = true;
+            testingOtpValue.textContent = '';
+        }
+        required('[data-pin-new]').value = '';
+        required('[data-pin-confirm]').value = '';
         pinGroups.forEach((group) => {
             pinGroupDigits(group).forEach((input) => { input.value = ''; });
             updatePinValue(group);
@@ -119,7 +183,7 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
             headers: {
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': modal.querySelector('[data-pin-csrf]').value,
+                'X-CSRF-TOKEN': required('[data-pin-csrf]').value,
             },
             body: new URLSearchParams(values),
         });
@@ -163,7 +227,7 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
                 otpDigits[index + 1].focus();
             } else if (event.key === 'Enter') {
                 event.preventDefault();
-                modal.querySelector('[data-pin-verify]').click();
+                required('[data-pin-verify]').click();
             }
         });
         input.addEventListener('paste', (event) => {
@@ -224,83 +288,125 @@ document.querySelectorAll('[data-wallet-pin-modal]').forEach((modal) => {
 
     sendButtons.forEach((button) => {
         button.addEventListener('click', async () => {
-            if (requestPending || rateLimitUntil > Date.now() || (button === resendButton && resendCooldownUntil > Date.now())) return;
-            requestPending = true;
+            if (requestGuard.pending || rateLimitUntil > Date.now() || (button === resendButton && resendCooldownUntil > Date.now())) return;
+            requestGuard.begin();
             updateCountdown();
             try {
                 const result = await post(modal.dataset.sendUrl, { purpose: purpose.value });
+                if (verifiedPurpose === purpose.value) verifiedPurpose = null;
+                pendingPurpose = purpose.value;
+                releaseFocusWithin(document.activeElement, modal);
                 showStep('verify');
                 clearOtp();
-                testingOtp.hidden = !result.testing_otp;
-                testingOtpValue.textContent = result.testing_otp ?? '';
+                if (result.testing_otp && (!testingOtp || !testingOtpValue)) {
+                    throw new Error('Wallet PIN modal is missing the testing OTP display.');
+                }
+                if (testingOtp && testingOtpValue) {
+                    testingOtp.hidden = !result.testing_otp;
+                    testingOtpValue.textContent = result.testing_otp ?? '';
+                }
                 startResendCooldown();
-                showNotification(Swal, result.message, 'success');
-                otpDigits[0].focus();
+                await notify(result.message, 'success', otpDigits[0]);
             } catch (exception) {
-                showNotification(Swal, exception.message, 'error');
+                await notify(exception.message, 'error', button);
                 if (exception.status === 429 && Number.isFinite(exception.retryAfter) && exception.retryAfter > 0) {
                     startRateLimit(exception.retryAfter);
                 }
             } finally {
-                requestPending = false;
+                requestGuard.end();
                 updateCountdown();
             }
         });
     });
-    modal.querySelector('[data-pin-verify]').addEventListener('click', async () => {
+    required('[data-pin-verify]').addEventListener('click', async (event) => {
+        if (!requestGuard.begin()) return;
+        updateCountdown();
         try {
             const result = await post(modal.dataset.verifyUrl, {
                 purpose: purpose.value,
                 code: otpValue(),
             });
+            pendingPurpose = null;
+            verifiedPurpose = purpose.value;
+            releaseFocusWithin(document.activeElement, modal);
             showStep('save');
             title.textContent = 'Create Wallet Transaction PIN';
-            showNotification(Swal, result.message, 'success');
-            modal.querySelector('[data-pin-new]').focus();
+            await notify(result.message, 'success', required('[data-pin-new]'));
         } catch (exception) {
-            showNotification(Swal, exception.message, 'error');
+            let target = otpDigits[0];
+            if (/^This verification code has expired|^This verification code has already been used/.test(exception.message)) {
+                releaseFocusWithin(document.activeElement, modal);
+                pendingPurpose = null;
+                setPurpose(purpose.value);
+                target = required('[data-pin-send]');
+            }
+            await notify(exception.message, 'error', target);
+        } finally {
+            requestGuard.end();
+            updateCountdown();
         }
     });
-    modal.querySelector('[data-pin-save]').addEventListener('click', async () => {
+    required('[data-pin-save]').addEventListener('click', async (event) => {
+        if (requestGuard.pending) return;
         try {
-            const pin = modal.querySelector('[data-pin-new]').value;
-            const confirmation = modal.querySelector('[data-pin-confirm]').value;
+            const pin = required('[data-pin-new]').value;
+            const confirmation = required('[data-pin-confirm]').value;
             if (!/^\d{4}$/.test(pin) || !/^\d{4}$/.test(confirmation)) {
-                showNotification(Swal, 'Enter and confirm a matching four-digit Wallet Transaction PIN.', 'error');
+                await notify('Enter and confirm a matching four-digit Wallet Transaction PIN.', 'error', required('[data-pin-new]'));
                 return;
             }
+            requestGuard.begin();
+            updateCountdown();
             const result = await post(modal.dataset.saveUrl, {
                 purpose: purpose.value,
                 wallet_transaction_pin: pin,
                 wallet_transaction_pin_confirmation: confirmation,
             });
+            verifiedPurpose = null;
+            pendingPurpose = null;
             const isConfigured = true;
             document.querySelectorAll('[data-wallet-pin-entry]').forEach((field) => { field.hidden = false; });
             document.querySelectorAll('[data-pin-required-submit]').forEach((button) => { button.disabled = false; });
             document.querySelectorAll('[data-pin-status]').forEach((status) => { status.textContent = 'Active'; });
             modal.dispatchEvent(new CustomEvent('wallet-pin:saved', { bubbles: true, detail: { isConfigured } }));
-            instance.hide();
-            showNotification(Swal, result.message, 'success');
-            document.querySelector('[data-pin-required-input]')?.parentElement.querySelector('[data-pin-digit]')?.focus();
+            await hideModal();
+            await notify(result.message, 'success', modalOpener);
         } catch (exception) {
-            modal.querySelector('[data-pin-new]').value = '';
-            modal.querySelector('[data-pin-confirm]').value = '';
-            showNotification(Swal, exception.message, 'error');
+            required('[data-pin-new]').value = '';
+            required('[data-pin-confirm]').value = '';
+            let target = required('[data-pin-save]');
+            if (/^(This verification code has expired|This verification code has already been used|Verify a current email code)/.test(exception.message)) {
+                releaseFocusWithin(document.activeElement, modal);
+                verifiedPurpose = null;
+                pendingPurpose = null;
+                setPurpose(purpose.value);
+                target = required('[data-pin-send]');
+            }
+            await notify(exception.message, 'error', target);
+        } finally {
+            requestGuard.end();
+            updateCountdown();
         }
     });
     modal.querySelector('[data-pin-reset]')?.addEventListener('click', () => setPurpose('wallet_password_reset'));
-    modal.addEventListener('hidden.bs.modal', () => setPurpose(
-        modal.querySelector('[data-wallet-pin-open]')?.dataset.walletPinPurpose ?? purpose.value,
-    ));
+    modal.addEventListener('hide.bs.modal', () => {
+        releaseFocusWithin(document.activeElement, modal);
+    });
+    modal.addEventListener('hidden.bs.modal', () => {
+        setPurpose(purpose.value);
+        restoreFocus(modalOpener);
+    });
     document.querySelectorAll('[data-wallet-pin-open]').forEach((button) => {
         button.addEventListener('click', (event) => {
             event.preventDefault();
-            setPurpose(button.dataset.walletPinPurpose ?? purpose.value);
+            setPurpose(verifiedPurpose ?? pendingPurpose ?? button.dataset.walletPinPurpose ?? purpose.value);
+            modalOpener = button;
             instance.show();
         });
     });
     if (modal.hasAttribute('data-auto-open')) {
         setPurpose('wallet_password_set');
+        modalOpener = document.querySelector('[data-wallet-pin-open]');
         instance.show();
     }
 });

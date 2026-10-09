@@ -51,28 +51,21 @@
             @forelse ($audit as $entry)
                 @php
                     $metadata = is_array($entry->metadata) ? $entry->metadata : [];
-                    $eventLabel = match ($entry->event) {
-                        'deposit.submitted' => 'Deposit Submitted',
-                        'admin.deposit_approved' => 'Deposit Approved',
-                        'admin.deposit_rejected' => 'Deposit Rejected',
-                        default => str($entry->event)->replace(['.', '_'], ' ')->title()->toString(),
-                    };
                     $isSubmission = $entry->event === 'deposit.submitted';
                     $isApproval = $entry->event === 'admin.deposit_approved';
                     $isReview = in_array($entry->event, ['admin.deposit_approved', 'admin.deposit_rejected'], true);
-                    $amount = $metadata['amount'] ?? null;
-                    $hasAmount = is_scalar($amount) && is_numeric((string) $amount);
-                    $transactionReference = $metadata['transaction_reference'] ?? null;
-                    $hasTransactionReference = is_scalar($transactionReference) && trim((string) $transactionReference) !== '';
-                    $rejectionReason = $metadata['rejection_reason'] ?? null;
-                    $hasRejectionReason = is_scalar($rejectionReason) && trim((string) $rejectionReason) !== '';
+                    if ($isSubmission && filled($deposit->user->name)) {
+                        $metadata = ['customer' => $deposit->user->name] + $metadata;
+                    }
+                    if ($isApproval) {
+                        $metadata['ledger_credit'] = $ledgerEntry ? 'Recorded' : 'Not recorded';
+                    }
                     $eventDate = $entry->created_at->timezone(config('app.timezone'));
-                    $hasAuditDetails = $isSubmission || $hasAmount || $hasTransactionReference || $isApproval || $hasRejectionReason;
                 @endphp
                 <article class="admin-activity-item admin-activity-item-stacked">
                     <span class="admin-activity-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span>
                     <div class="admin-activity-copy">
-                        <strong>{{ $eventLabel }}</strong>
+                        <strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong>
                         <span>
                             @if ($isSubmission)
                                 Submitted by {{ $entry->actor?->name ?? 'Customer' }}
@@ -83,25 +76,7 @@
                             @endif
                             · <time datetime="{{ $eventDate->toIso8601String() }}">{{ $eventDate->format('M j, Y · H:i') }}</time>
                         </span>
-                        @if ($hasAuditDetails)
-                            <dl class="admin-audit-details">
-                                @if ($isSubmission && filled($deposit->user->name))
-                                    <div><dt>Customer</dt><dd>{{ $deposit->user->name }}</dd></div>
-                                @endif
-                                @if ($hasAmount)
-                                    <div><dt>Amount</dt><dd>{{ \App\Support\Money::formatUsd((string) $amount) }}</dd></div>
-                                @endif
-                                @if ($hasTransactionReference)
-                                    <div><dt>Transaction Reference</dt><dd>{{ $transactionReference }}</dd></div>
-                                @endif
-                                @if ($isApproval)
-                                    <div><dt>Ledger Credit</dt><dd>{{ $ledgerEntry ? 'Recorded' : 'Not recorded' }}</dd></div>
-                                @endif
-                                @if ($hasRejectionReason)
-                                    <div><dt>Rejection Reason</dt><dd>{{ $rejectionReason }}</dd></div>
-                                @endif
-                            </dl>
-                        @endif
+                        <x-admin.audit-metadata :metadata="$metadata" :event="$entry->event" />
                     </div>
                 </article>
             @empty<div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No audit history</strong><p>Request events will appear here once recorded.</p></div>@endforelse

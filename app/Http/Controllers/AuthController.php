@@ -225,50 +225,30 @@ class AuthController extends Controller
         $user = $request->user('web');
         abort_unless($user?->role === 'user', 403);
 
-        $referrals = $user->referrals()
-            ->where('role', 'user')
-            ->with('referralQualification')
-            ->latest('created_at')
-            ->orderByDesc('id')
-            ->limit(5)
-            ->get(['id', 'customer_id', 'referred_by_user_id', 'created_at']);
-        $referralProgress = $this->referralProgress($referrals);
-        $referralCount = $user->referrals()->where('role', 'user')->count();
-        $qualifiedReferralCount = $user->referrals()
-            ->where('role', 'user')
-            ->whereHas('referralQualification')
-            ->count();
-        $commissionTotals = ['1' => '0.00', '2' => '0.00', '3' => '0.00'];
+        $levels = ReferralCommissionLevel::query()
+            ->whereIn('level', [1, 2, 3])
+            ->orderBy('level')
+            ->get(['level', 'amount', 'is_active']);
+        $creditedLevels = $user->referralCommissions()
+            ->where('status', 'credited')
+            ->distinct()
+            ->pluck('level')
+            ->map(fn ($level): int => (int) $level)
+            ->all();
         $totalEarned = '0.00';
 
         $user->referralCommissions()
             ->where('status', 'credited')
             ->orderBy('id')
-            ->select(['id', 'level', 'amount'])
-            ->chunkById(500, function (Collection $commissions) use (&$commissionTotals, &$totalEarned): void {
-                $commissions->each(function (ReferralCommission $commission) use (&$commissionTotals, &$totalEarned): void {
-                    $level = (string) $commission->level;
+            ->select(['id', 'amount'])
+            ->chunkById(500, function (Collection $commissions) use (&$totalEarned): void {
+                $commissions->each(function (ReferralCommission $commission) use (&$totalEarned): void {
                     $amount = (string) $commission->amount;
-                    $commissionTotals[$level] = Decimal::add($commissionTotals[$level], $amount, 2);
                     $totalEarned = Decimal::add($totalEarned, $amount, 2);
                 });
             });
 
-        $estimatedLevelOneReward = ReferralCommissionLevel::query()
-            ->where('level', 1)
-            ->where('is_active', true)
-            ->value('amount');
-
-        return view('pages.profile-referrals', compact(
-            'user',
-            'referralCount',
-            'qualifiedReferralCount',
-            'totalEarned',
-            'commissionTotals',
-            'estimatedLevelOneReward',
-            'referrals',
-            'referralProgress',
-        ));
+        return view('pages.profile-referrals', compact('user', 'levels', 'creditedLevels', 'totalEarned'));
     }
 
     public function referralHistory(Request $request): View

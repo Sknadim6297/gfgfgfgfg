@@ -1,4 +1,18 @@
-<div class="modal fade wallet-pin-modal" id="walletTransactionPinModal" tabindex="-1" aria-labelledby="walletTransactionPinModalTitle" aria-hidden="true" data-wallet-pin-modal data-send-url="{{ route('wallet-pin.otp.send') }}" data-verify-url="{{ route('wallet-pin.otp.verify') }}" data-save-url="{{ route('wallet-pin.save') }}" @if (($autoOpenWalletPin ?? false) && ! $user->hasWalletTransactionPin()) data-auto-open @endif>
+@php
+    $walletPinHasConfiguredPin = $user->hasWalletTransactionPin();
+    $walletPinDefaultPurpose = $walletPinHasConfiguredPin ? 'wallet_password_change' : 'wallet_password_set';
+    $walletPinOtp = \App\Models\WalletPinOtp::query()
+        ->where('user_id', $user->id)
+        ->whereIn('purpose', $walletPinHasConfiguredPin
+            ? ['wallet_password_change', 'wallet_password_reset']
+            : ['wallet_password_set'])
+        ->whereNull('consumed_at')
+        ->where('expires_at', '>', now())
+        ->latest('id')
+        ->first();
+    $walletPinPurpose = $walletPinOtp?->purpose ?? $walletPinDefaultPurpose;
+@endphp
+<div class="modal fade wallet-pin-modal" id="walletTransactionPinModal" tabindex="-1" aria-labelledby="walletTransactionPinModalTitle" aria-hidden="true" data-wallet-pin-modal data-send-url="{{ route('wallet-pin.otp.send') }}" data-verify-url="{{ route('wallet-pin.otp.verify') }}" data-save-url="{{ route('wallet-pin.save') }}" data-pending-purpose="{{ $walletPinOtp && $walletPinOtp->verified_at === null ? $walletPinPurpose : '' }}" data-verified-purpose="{{ $walletPinOtp && $walletPinOtp->verified_at !== null ? $walletPinPurpose : '' }}" @if (($autoOpenWalletPin ?? false) && ! $user->hasWalletTransactionPin()) data-auto-open @endif>
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
@@ -9,7 +23,7 @@
                 <p class="wallet-pin-modal-copy">Verify your registered email <strong>{{ $maskedEmail }}</strong> to set or update the PIN used for Sell and withdrawal requests.</p>
                 <p class="wallet-pin-countdown" data-pin-countdown role="status" hidden></p>
                 <input type="hidden" value="{{ csrf_token() }}" data-pin-csrf>
-                <input type="hidden" value="{{ $user->hasWalletTransactionPin() ? 'wallet_password_change' : 'wallet_password_set' }}" data-pin-purpose>
+                <input type="hidden" value="{{ $walletPinPurpose }}" data-pin-purpose>
                 <section data-pin-step="send">
                     <button class="profile-save-button" type="button" data-pin-send>Send OTP</button>
                     @if ($user->hasWalletTransactionPin())
@@ -30,6 +44,7 @@
                     <p class="wallet-pin-resend">Didn't receive the code? <button class="wallet-pin-reset-link" type="button" data-pin-resend>Resend OTP</button></p>
                 </section>
                 <section data-pin-step="save" hidden>
+                    <p class="wallet-pin-verified" role="status"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Email verified</p>
                     <div class="wallet-pin-field">
                         <label id="wallet-pin-new-label">New Wallet Transaction PIN</label>
                         <div class="wallet-transaction-pin-boxes" role="group" aria-labelledby="wallet-pin-new-label" data-pin-input-group>

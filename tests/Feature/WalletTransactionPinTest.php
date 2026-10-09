@@ -33,7 +33,14 @@ class WalletTransactionPinTest extends TestCase
             ->assertSee('Not Set')
             ->assertSee('data-pin-otp-digit', false)
             ->assertSee('wallet-pin-otp-digit-6')
+            ->assertSee('Verify OTP')
+            ->assertSee('Resend OTP')
+            ->assertSee('data-pin-step="send"', false)
             ->assertSee('data-pin-step="verify" hidden', false)
+            ->assertSee('data-pin-step="save" hidden', false)
+            ->assertSee('data-pin-testing-otp', false)
+            ->assertSee('data-pin-new', false)
+            ->assertSee('data-pin-confirm', false)
             ->assertDontSee('data-pin-success-message')
             ->assertDontSee('data-pin-message')
             ->assertDontSee('data-pin-error');
@@ -117,6 +124,140 @@ class WalletTransactionPinTest extends TestCase
             ->assertUnprocessable();
         $this->postJson(route('wallet-pin.otp.send'), ['purpose' => 'wallet_password_reset'])
             ->assertOk();
+    }
+
+    public function test_pin_setup_resumes_after_a_page_reload_with_database_sessions(): void
+    {
+        Mail::fake();
+        config(['session.driver' => 'database']);
+        $user = User::factory()->create();
+
+        $this->post(route('login'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertRedirect();
+
+        $this->postJson(route('wallet-pin.otp.send'), ['purpose' => 'wallet_password_set'])
+            ->assertOk();
+        $code = $this->latestOtpCode();
+
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('data-pending-purpose="wallet_password_set"', false)
+            ->assertSee('data-pin-step="verify"', false);
+
+        $this->postJson(route('wallet-pin.otp.verify'), [
+            'purpose' => 'wallet_password_set',
+            'code' => $code,
+        ])->assertOk();
+
+        $otp = WalletPinOtp::query()->where('user_id', $user->id)->firstOrFail();
+        $this->assertNotNull($otp->verified_at);
+
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('data-verified-purpose="wallet_password_set"', false)
+            ->assertSee('data-pending-purpose=""', false)
+            ->assertSee('Email verified');
+
+        $this->postJson(route('wallet-pin.save'), [
+            'purpose' => 'wallet_password_set',
+            'wallet_transaction_pin' => '2468',
+            'wallet_transaction_pin_confirmation' => '2468',
+        ])->assertOk();
+
+        $this->assertTrue(Hash::check('2468', $user->fresh()->wallet_transaction_password_hash));
+        $this->assertNotNull($otp->fresh()->consumed_at);
+        $this->assertDatabaseHas('sessions', ['user_id' => $user->id]);
+    }
+
+    public function test_expired_verified_otp_returns_an_actionable_error_without_consuming_it(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create();
+        $this->actingAs($user, 'web')
+            ->postJson(route('wallet-pin.otp.send'), ['purpose' => 'wallet_password_set'])
+            ->assertOk();
+        $code = $this->latestOtpCode();
+
+        $this->postJson(route('wallet-pin.otp.verify'), [
+            'purpose' => 'wallet_password_set',
+            'code' => $code,
+        ])->assertOk();
+
+        $this->travel(11)->minutes();
+        $this->postJson(route('wallet-pin.save'), [
+            'purpose' => 'wallet_password_set',
+            'wallet_transaction_pin' => '2468',
+            'wallet_transaction_pin_confirmation' => '2468',
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.wallet_pin_otp.0', 'This verification code has expired. Please request a new code.');
+
+        $this->assertNull($user->fresh()->wallet_transaction_password_hash);
+        $this->assertNull(WalletPinOtp::query()->where('user_id', $user->id)->value('consumed_at'));
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('data-pending-purpose=""', false)
+            ->assertSee('data-verified-purpose=""', false)
+            ->assertSee('data-pin-send', false);
+    }
+
+    public function test_repeated_pin_save_cannot_reuse_the_consumed_otp_or_change_the_pin_again(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create();
+        $user->forceFill(['wallet_transaction_password_hash' => Hash::make('1357')])->save();
+        $this->actingAs($user, 'web')
+            ->postJson(route('wallet-pin.otp.send'), ['purpose' => 'wallet_password_change'])
+            ->assertOk();
+        $code = $this->latestOtpCode();
+
+        $this->postJson(route('wallet-pin.otp.verify'), [
+            'purpose' => 'wallet_password_change',
+            'code' => $code,
+        ])->assertOk();
+
+        $payload = [
+            'purpose' => 'wallet_password_change',
+            'wallet_transaction_pin' => '2468',
+            'wallet_transaction_pin_confirmation' => '2468',
+        ];
+        $this->postJson(route('wallet-pin.save'), $payload)->assertOk();
+        $savedHash = $user->fresh()->wallet_transaction_password_hash;
+
+        $this->postJson(route('wallet-pin.save'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.wallet_pin_otp.0', 'This verification code has already been used. Please request a new code.');
+
+        $this->assertSame($savedHash, $user->fresh()->wallet_transaction_password_hash);
+        $this->assertDatabaseCount('audit_logs', 1);
+    }
+
+    public function test_consumed_otp_is_reported_as_already_used(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create();
+        $user->forceFill(['wallet_transaction_password_hash' => Hash::make('1234')])->save();
+        $this->actingAs($user, 'web');
+
+        $this->postJson(route('wallet-pin.otp.send'), ['purpose' => 'wallet_password_reset'])
+            ->assertOk();
+        $code = $this->latestOtpCode();
+        $this->postJson(route('wallet-pin.otp.verify'), [
+            'purpose' => 'wallet_password_reset',
+            'code' => $code,
+        ])->assertOk();
+        $this->postJson(route('wallet-pin.save'), [
+            'purpose' => 'wallet_password_reset',
+            'wallet_transaction_pin' => '5678',
+            'wallet_transaction_pin_confirmation' => '5678',
+        ])->assertOk();
+
+        $this->postJson(route('wallet-pin.otp.verify'), [
+            'purpose' => 'wallet_password_reset',
+            'code' => $code,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.wallet_pin_otp.0', 'This verification code has already been used. Please request a new code.');
     }
 
     public function test_testing_otp_is_not_disclosed_when_app_environment_is_production(): void

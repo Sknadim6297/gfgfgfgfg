@@ -16,7 +16,7 @@ class CustomerReferralDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_shows_own_level_earnings_and_snapshot_based_progress_privately(): void
+    public function test_dashboard_shows_configured_levels_and_only_credited_earnings_privately(): void
     {
         $owner = User::factory()->create(['inr_balance' => '3000.00']);
         $direct = User::factory()->create([
@@ -35,23 +35,29 @@ class CustomerReferralDashboardTest extends TestCase
         $this->createCommission($owner, $direct, 1, '1500.00');
         $this->createCommission($owner, $secondLevel, 2, '1000.00');
         $this->createCommission($owner, $thirdLevel, 3, '500.00');
+        ReferralCommissionLevel::query()->where('level', 1)->update(['amount' => '1750.00']);
+        ReferralCommissionLevel::query()->where('level', 3)->update(['is_active' => false]);
 
         $this->actingAs($owner, 'web')
             ->get(route('profile.referrals'))
             ->assertOk()
+            ->assertSee('My Referrals')
+            ->assertSee('Invite friends. Earn rewards as they qualify.')
             ->assertSee($owner->referral_code)
             ->assertSee(route('register', ['ref' => $owner->referral_code]))
-            ->assertSee('Total Direct Referrals')
-            ->assertSee('Qualified Referrals')
+            ->assertSee('Total Earned')
             ->assertSee('₹3,000.00')
-            ->assertSee('Level 1 Earnings')
-            ->assertSee('₹1,500.00')
-            ->assertSee('Level 2 Earnings')
+            ->assertSee('₹1,750.00')
             ->assertSee('₹1,000.00')
-            ->assertSee('Level 3 Earnings')
             ->assertSee('₹500.00')
-            ->assertSee('1,000.000000 USDT')
-            ->assertSee($direct->customer_id)
+            ->assertSee('View Referral History')
+            ->assertSee('Reward credited')
+            ->assertSee('Inactive')
+            ->assertSee('Level 1')
+            ->assertSee('Level 2')
+            ->assertSee('Level 3')
+            ->assertDontSee('Total Direct Referrals')
+            ->assertDontSee('1,000.000000 USDT')
             ->assertDontSee('Private Referred Name')
             ->assertDontSee('private-referred@example.test');
     }

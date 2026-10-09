@@ -90,12 +90,30 @@ class WalletPinOtpService
                 return 'limited';
             }
 
-            if (! $otp || $otp->consumed_at !== null || $otp->verified_at !== null) {
+            if (! $otp) {
                 return 'invalid';
+            }
+
+            if ($otp->consumed_at !== null) {
+                return 'used';
             }
 
             if ($otp->expires_at->isPast()) {
                 return 'expired';
+            }
+
+            if ($otp->verified_at !== null) {
+                if (Hash::check($code, $otp->otp_hash)) {
+                    return 'valid';
+                }
+
+                $otp->attempts++;
+                if ($otp->attempts >= 5) {
+                    $otp->consumed_at = now();
+                }
+                $otp->save();
+
+                return 'invalid';
             }
 
             if (! Hash::check($code, $otp->otp_hash)) {
@@ -116,6 +134,7 @@ class WalletPinOtpService
         if ($result !== 'valid') {
             $message = match ($result) {
                 'expired' => 'This verification code has expired. Please request a new code.',
+                'used' => 'This verification code has already been used. Please request a new code.',
                 'limited' => 'Too many attempts. Please try again later.',
                 default => 'Invalid verification code.',
             };
@@ -134,13 +153,23 @@ class WalletPinOtpService
         $otp = WalletPinOtp::query()
             ->where('user_id', $user->id)
             ->where('purpose', $purpose)
-            ->whereNotNull('verified_at')
-            ->whereNull('consumed_at')
             ->latest('id')
             ->lockForUpdate()
             ->first();
 
-        if (! $otp || $otp->expires_at->isPast()) {
+        if ($otp?->consumed_at !== null) {
+            throw ValidationException::withMessages([
+                'wallet_pin_otp' => 'This verification code has already been used. Please request a new code.',
+            ]);
+        }
+
+        if ($otp && $otp->expires_at->isPast()) {
+            throw ValidationException::withMessages([
+                'wallet_pin_otp' => 'This verification code has expired. Please request a new code.',
+            ]);
+        }
+
+        if (! $otp || $otp->verified_at === null) {
             throw ValidationException::withMessages([
                 'wallet_pin_otp' => 'Verify a current email code before setting your Wallet Transaction PIN.',
             ]);

@@ -171,11 +171,12 @@ class AuthenticationAndPortalTest extends TestCase
 
     public function test_user_login_redirects_home_and_suspended_account_is_denied(): void
     {
-        $user = User::factory()->create(['email_verified_at' => now()])->fresh();
+        $user = User::factory()->unverified()->create()->fresh();
         $this->withSession(['url.intended' => route('dashboard')])->post(route('login.store'), [
             'email' => $user->email,
             'password' => 'password',
         ])->assertRedirect(route('home'));
+        $this->assertNull($user->email_verified_at);
         $this->assertAuthenticatedAs($user, 'web');
         $this->get(route('login'))->assertRedirect(route('home'));
 
@@ -186,6 +187,23 @@ class AuthenticationAndPortalTest extends TestCase
             'password' => 'password',
         ])->assertSessionHasErrors('email');
         $this->assertGuest('web');
+    }
+
+    public function test_unverified_customer_can_access_permitted_customer_pages(): void
+    {
+        $user = User::factory()->unverified()->create()->fresh();
+        $this->assertNull($user->email_verified_at);
+
+        $this->actingAs($user, 'web');
+        foreach ([
+            route('profile'),
+            route('wallet'),
+            route('exchange.sell'),
+            route('deposit.create'),
+            route('profile.referrals'),
+        ] as $url) {
+            $this->get($url)->assertOk();
+        }
     }
 
     public function test_dashboard_redirects_home_and_profile_is_a_separate_page(): void
@@ -492,10 +510,14 @@ class AuthenticationAndPortalTest extends TestCase
 
         $this->actingAs($referrer, 'web')->get(route('profile.referrals'))
             ->assertOk()
+            ->assertSee('My Referrals')
+            ->assertSee('Invite friends. Earn rewards as they qualify.')
             ->assertSee($referrer->referral_code)
             ->assertSee(route('register', ['ref' => $referrer->referral_code]))
-            ->assertSee('Total Direct Referrals')
-            ->assertSee('Qualified Referrals');
+            ->assertSee('Total Earned')
+            ->assertSee('View Referral History')
+            ->assertDontSee('Total Direct Referrals')
+            ->assertDontSee('Qualified Referrals');
 
         $this->get(route('profile.referrals.history'))
             ->assertOk()
@@ -1183,7 +1205,19 @@ class AuthenticationAndPortalTest extends TestCase
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
         $this->get(route('admin.users.show', $user))
             ->assertOk()
+            ->assertDontSee('Email verified')
+            ->assertDontSee('<dt>Verification status</dt><dd><span class="portal-badge', false)
+            ->assertSee('Bank details')
+            ->assertSee('Wallet Transaction PIN')
             ->assertSee('data-confirm="The selected role and account status will take effect immediately."', false);
+        $this->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertSee('Bank')
+            ->assertSee('Account status')
+            ->assertDontSee('>Verification</th>', false);
+        $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('Pending verifications');
 
         $this->put(route('admin.users.update', $user), [
             'account_status' => 'suspended',

@@ -14,6 +14,7 @@
     @php
         $adminPageTitle = match (true) {
             request()->routeIs('admin.dashboard') => 'Overview',
+            request()->routeIs('admin.demo-preview.*') => 'Demo data preview',
             request()->routeIs('admin.users.show') => 'User details',
             request()->routeIs('admin.users.index') => 'User management',
             request()->routeIs('admin.exchanges.show') => 'Sell request details',

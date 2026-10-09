@@ -10,7 +10,6 @@
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-people-fill" aria-hidden="true"></i></span><span class="admin-stat-label">Registered users</span><strong>{{ number_format($metrics['users']) }}</strong><small>All customer accounts</small></article>
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-person-check-fill" aria-hidden="true"></i></span><span class="admin-stat-label">Active users</span><strong>{{ number_format($metrics['active_users']) }}</strong><small>Accounts with access</small></article>
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-person-lock" aria-hidden="true"></i></span><span class="admin-stat-label">Suspended / blocked</span><strong>{{ number_format($metrics['suspended_users']) }}</strong><small>Restricted accounts</small></article>
-        <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-patch-exclamation" aria-hidden="true"></i></span><span class="admin-stat-label">Pending verifications</span><strong>{{ number_format($metrics['pending_verifications']) }}</strong><small>Awaiting review</small></article>
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><span class="admin-stat-label">Exchange requests</span><strong>{{ number_format($metrics['exchange_requests']) }}</strong><small>Total requests recorded</small></article>
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span><span class="admin-stat-label">Pending / processing</span><strong>{{ number_format($metrics['pending_transactions']) }}</strong><small>Open workflow items</small></article>
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-check2-circle" aria-hidden="true"></i></span><span class="admin-stat-label">Completed requests</span><strong>{{ number_format($metrics['completed_transactions']) }}</strong><small>Marked complete</small></article>
@@ -23,7 +22,7 @@
             @forelse ($recentActivity as $activity)
                 <article class="admin-activity-item">
                     <span class="admin-activity-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
-                    <div class="admin-activity-copy"><strong>{{ str_replace('_', ' ', $activity->event) }}</strong><span>{{ $activity->actor?->name ?? 'System' }}@if ($activity->subject) <span class="admin-activity-separator">·</span> {{ $activity->subject->name }} @endif</span></div>
+                    <div class="admin-activity-copy"><strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($activity->event) }}</strong><span>{{ $activity->actor?->name ?? 'System' }}@if ($activity->subject) <span class="admin-activity-separator">·</span> {{ $activity->subject->name }} @endif</span></div>
                     <time datetime="{{ $activity->created_at->toIso8601String() }}">{{ $activity->created_at->format('M j, Y · H:i') }}</time>
                 </article>
             @empty

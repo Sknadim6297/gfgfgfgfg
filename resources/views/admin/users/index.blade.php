@@ -2,7 +2,7 @@
 @section('title', 'Quick PayMoney | User Management')
 @section('admin-content')
     <div class="admin-page-heading">
-        <div><span class="admin-eyebrow">ACCOUNT DIRECTORY</span><h1>User management</h1><p>Search accounts and review status, verification, and access.</p></div>
+        <div><span class="admin-eyebrow">ACCOUNT DIRECTORY</span><h1>User management</h1><p>Search accounts and review account status, bank details, and access.</p></div>
         <span class="admin-record-count"><i class="bi bi-people-fill" aria-hidden="true"></i> {{ number_format($stats['total']) }} accounts</span>
     </div>
 
@@ -25,21 +25,20 @@
         <div class="admin-table-meta"><span>Showing <strong>{{ $users->firstItem() ?? 0 }}–{{ $users->lastItem() ?? 0 }}</strong> of <strong>{{ $users->total() }}</strong> accounts</span><span>Account directory</span></div>
         <div class="portal-table-wrap admin-table-wrap">
             <table class="portal-table admin-table">
-                <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Registered</th><th scope="col">Verification</th><th scope="col">Bank</th><th scope="col">Account status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Registered</th><th scope="col">Bank</th><th scope="col">Account status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                 @forelse ($users as $user)
                     <tr>
                         <td><div class="admin-user-cell"><span class="admin-avatar admin-avatar-table" aria-hidden="true">{{ mb_substr($user->name, 0, 1) }}</span><span><strong>{{ $user->name }}</strong><small>{{ $user->email }}</small></span></div></td>
                         <td><span class="admin-role-label">{{ ucfirst($user->role) }}</span></td>
                         <td><time datetime="{{ $user->created_at->toDateString() }}">{{ $user->created_at->format('M j, Y') }}</time></td>
-                        <td><span class="portal-badge {{ $user->verification_status }}"><span class="admin-badge-dot"></span>{{ ucfirst($user->verification_status) }}</span></td>
                         @php($bankStatus = $user->bankVerificationStatusForAdminDirectory())
                         <td><span class="portal-badge {{ $bankStatus === 'not_submitted' ? 'inactive' : $bankStatus }}"><span class="admin-badge-dot"></span>{{ str($bankStatus)->replace('_', ' ')->title() }}</span></td>
                         <td><span class="portal-badge {{ $user->account_status }}"><span class="admin-badge-dot"></span>{{ ucfirst($user->account_status) }}</span></td>
                         <td class="admin-table-action"><a class="admin-icon-button" href="{{ route('admin.users.show', $user) }}" aria-label="View {{ $user->name }} details"><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a></td>
                     </tr>
                 @empty
-                    <tr><td colspan="7"><div class="admin-empty-state"><span><i class="bi bi-search" aria-hidden="true"></i></span><strong>No accounts found</strong><p>Try changing the search term or clearing the filters.</p></div></td></tr>
+                    <tr><td colspan="6"><div class="admin-empty-state"><span><i class="bi bi-search" aria-hidden="true"></i></span><strong>No accounts found</strong><p>Try changing the search term or clearing the filters.</p></div></td></tr>
                 @endforelse
                 </tbody>
             </table>

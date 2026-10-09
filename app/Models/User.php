@@ -93,7 +93,6 @@ class User extends Authenticatable
         'password',
         'role',
         'account_status',
-        'verification_status',
         'email_verified_at',
         'totp_secret',
         'totp_enabled',

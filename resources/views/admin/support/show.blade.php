@@ -73,7 +73,7 @@
             @forelse ($audit as $entry)
                 <article class="admin-activity-item admin-activity-item-stacked">
                     <span class="admin-activity-icon"><i class="bi bi-clock-history" aria-hidden="true"></i></span>
-                    <div class="admin-activity-copy"><strong>{{ str($entry->event)->replace('_', ' ')->title() }}</strong><span>{{ $entry->actor?->name ?? 'System' }} <span class="admin-activity-separator">·</span> {{ $entry->created_at->format('M j, Y · H:i') }}</span></div>
+                    <div class="admin-activity-copy"><strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'System' }} <span class="admin-activity-separator">·</span> {{ $entry->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</span></div>
                 </article>
             @empty
                 <div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No audit history</strong><p>Ticket changes will appear here.</p></div>

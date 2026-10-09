@@ -158,7 +158,7 @@
                             <tr>
                                 <td><time datetime="{{ $change->created_at->toIso8601String() }}">{{ $change->created_at->format('M j, Y · H:i') }}</time></td>
                                 <td>{{ $change->actor?->name ?? 'Admin account removed' }}</td>
-                                <td>{{ str_replace('admin.exchange_rate_', '', $change->event) }}</td>
+                                <td>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($change->event) }}</td>
                                 <td>{{ $plan['name'] ?? 'Base Rate' }}</td>
                                 <td>{{ is_string($beforeRate) ? \App\Models\ExchangeRate::formatDecimal($beforeRate) : '—' }}</td>
                                 <td><strong>{{ is_string($afterRate) ? \App\Models\ExchangeRate::formatDecimal($afterRate) : 'Deleted' }}</strong></td>

@@ -68,7 +68,7 @@
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">AUDIT TRAIL</span><h2>Deposit settings history</h2></div></div>
         <div class="admin-activity-list">
             @forelse ($history as $entry)
-                <article class="admin-activity-item"><span class="admin-activity-icon"><i class="bi bi-qr-code" aria-hidden="true"></i></span><div class="admin-activity-copy"><strong>{{ str_replace('_', ' ', $entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'Administrator' }} · {{ $entry->created_at->format('M j, Y · H:i') }}</span></div></article>
+                <article class="admin-activity-item"><span class="admin-activity-icon"><i class="bi bi-qr-code" aria-hidden="true"></i></span><div class="admin-activity-copy"><strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'Administrator' }} · {{ $entry->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</span></div></article>
             @empty<div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No settings changes recorded</strong><p>Future updates will be recorded here.</p></div>@endforelse
         </div>
     </section>

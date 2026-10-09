@@ -16,7 +16,6 @@ class AdminDashboardController extends Controller
                 'users' => User::where('role', 'user')->count(),
                 'active_users' => User::where('role', 'user')->where('account_status', 'active')->count(),
                 'suspended_users' => User::where('role', 'user')->whereIn('account_status', ['suspended', 'blocked'])->count(),
-                'pending_verifications' => User::where('role', 'user')->where('verification_status', 'pending')->count(),
                 'exchange_requests' => ExchangeRequest::count(),
                 'pending_transactions' => ExchangeRequest::whereIn('status', ['pending', 'processing'])->count(),
                 'completed_transactions' => ExchangeRequest::where('status', 'completed')->count(),

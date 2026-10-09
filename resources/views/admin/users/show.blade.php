@@ -13,8 +13,6 @@
                 <div><dt>Mobile</dt><dd>{{ $user->mobile ?: 'Not provided' }}</dd></div>
                 <div><dt>Role</dt><dd>{{ ucfirst($user->role) }}</dd></div>
                 <div><dt>Registered</dt><dd>{{ $user->created_at->format('M j, Y · H:i') }}</dd></div>
-                <div><dt>Email verified</dt><dd><span class="portal-badge {{ $user->hasVerifiedEmail() ? 'verified' : 'pending' }}"><span class="admin-badge-dot"></span>{{ $user->hasVerifiedEmail() ? 'Verified' : 'Not verified' }}</span></dd></div>
-                <div><dt>Verification status</dt><dd><span class="portal-badge {{ $user->verification_status }}"><span class="admin-badge-dot"></span>{{ ucfirst($user->verification_status) }}</span></dd></div>
                 <div><dt>Wallet Transaction PIN</dt><dd><span class="portal-badge {{ $user->hasWalletTransactionPin() ? 'verified' : 'inactive' }}">{{ $user->hasWalletTransactionPin() ? 'Configured' : 'Not Configured' }}</span></dd></div>
             </dl>
         </section>
@@ -83,7 +81,7 @@
     <section class="admin-panel admin-section-gap">
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">SECURITY TRAIL</span><h2>Recent activity log</h2></div></div>
         <div class="admin-activity-list">
-            @forelse ($activity as $entry)<article class="admin-activity-item"><span class="admin-activity-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span><div class="admin-activity-copy"><strong>{{ str_replace('_', ' ', $entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'System' }}</span></div><time datetime="{{ $entry->created_at->toIso8601String() }}">{{ $entry->created_at->format('M j, Y · H:i') }}</time></article>
+            @forelse ($activity as $entry)<article class="admin-activity-item"><span class="admin-activity-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span><div class="admin-activity-copy"><strong>{{ app(\App\Support\AdminAuditPresenter::class)->eventTitle($entry->event) }}</strong><span>{{ $entry->actor?->name ?? 'System' }}</span></div><time datetime="{{ $entry->created_at->toIso8601String() }}">{{ $entry->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</time></article>
             @empty<div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No activity recorded</strong><p>Account events will be listed here.</p></div>@endforelse
         </div>
     </section>
