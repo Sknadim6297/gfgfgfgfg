@@ -1,0 +1,85 @@
+﻿/* WhatsApp Floating Button */
+.whatsapp {
+    position: fixed;
+    right: 20px;
+    bottom: 85px;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    z-index: 9999;
+    /* smooth button movement */
+    animation: whatsappFloat 3s ease-in-out infinite;
+    will-change: transform;
+}
+
+    /* WhatsApp Icon */
+    .whatsapp i {
+        font-size: 28px;
+        /* smooth zoom */
+        animation: whatsappZoom 2s ease-in-out infinite;
+        will-change: transform;
+    }
+
+
+/* Button smoothly moves UP & DOWN */
+@keyframes whatsappFloat {
+
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+
+/* Icon smoothly zooms IN & OUT */
+@keyframes whatsappZoom {
+
+    0%, 100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.18);
+    }
+}
+
+@media (max-width: 767px) {
+
+    .whatsapp {
+        right: 15px;
+        bottom: 75px;
+        width: 48px;
+        height: 48px;
+    }
+
+        .whatsapp i {
+            font-size: 25px;
+        }
+}
+/* =====================================
+           WHATSAPP
+        ===================================== */
+
+.whatsapp {
+    position: fixed;
+    right: 28px;
+    bottom: 82px;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: #20c832;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 39px;
+    text-decoration: none;
+    box-shadow: 0 0 0 10px rgba(255,193,7,.20), 0 10px 25px rgba(0,0,0,.4);
+    z-index: 1100;
+}

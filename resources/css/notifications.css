@@ -1,0 +1,40 @@
+.swal2-popup {
+    font-family: 'Poppins', sans-serif;
+}
+
+.swal2-confirm {
+    background: linear-gradient(135deg, #ffd900, #ffbd00) !important;
+    color: #111 !important;
+}
+
+.swal2-html-container.quickpay-alert-text {
+    white-space: pre-line;
+}
+
+.main-wrapper {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+    padding-bottom: 0;
+}
+
+.main-wrapper > main {
+    flex: 1 0 auto;
+    padding-bottom: 32px;
+}
+
+.main-wrapper > main.content-area.app-shell,
+.main-wrapper > main.deposit-page {
+    padding-bottom: 32px;
+}
+
+.main-wrapper > .bottom-nav {
+    position: static;
+    inset: auto;
+    flex: 0 0 auto;
+    width: min(calc(100% - 24px), 430px);
+    max-width: 430px;
+    margin: 0 auto;
+    transform: none;
+    border-radius: 20px 20px 0 0;
+}

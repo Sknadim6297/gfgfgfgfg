@@ -1,0 +1,349 @@
+.sell-request-card {
+    max-width: 860px;
+    margin: 0 auto 28px;
+}
+
+.sell-balance-panel {
+    display: grid;
+    gap: 5px;
+    padding: 18px 20px;
+    margin: 22px 0;
+    border: 1px solid rgba(255, 208, 0, .3);
+    border-radius: 14px;
+    background: rgba(255, 208, 0, .06);
+}
+
+.sell-balance-panel span,
+.sell-balance-panel small,
+.sell-accounting-note {
+    color: #aaa;
+    font-size: 13px;
+}
+
+.sell-pending-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 18px 0 0;
+    padding: 15px;
+    border: 1px solid rgba(255, 208, 0, .22);
+    border-radius: 12px;
+    background: rgba(255, 208, 0, .055);
+}
+
+.sell-pending-note-icon {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    place-items: center;
+    border: 1px solid rgba(255, 208, 0, .28);
+    border-radius: 10px;
+    background: rgba(255, 208, 0, .08);
+    color: #ffd000;
+    font-size: 16px;
+}
+
+.sell-pending-note-copy {
+    min-width: 0;
+    padding-top: 1px;
+}
+
+.sell-pending-note-copy > strong {
+    display: block;
+    color: #f3e6ad;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sell-pending-note-copy p {
+    margin: 4px 0 0;
+    color: #b9b9b9;
+    font-size: 12px;
+    line-height: 1.65;
+}
+
+.sell-pending-note-copy b {
+    color: #ffd84d;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sell-balance-panel strong {
+    color: #ffd000;
+    font-size: 25px;
+}
+
+.sell-request-form,
+.sell-payment-options {
+    display: grid;
+    gap: 12px;
+}
+
+.sell-request-form > label,
+.sell-payment-options legend {
+    color: #f2f2f2;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.sell-estimate {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255, 208, 0, .2);
+    border-radius: 12px;
+    background: #111;
+}
+
+.sell-estimate > div {
+    display: grid;
+    gap: 4px;
+}
+
+.sell-estimate span,
+.sell-estimate-error {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.sell-estimate strong {
+    color: #ffd000;
+    font-size: 14px;
+}
+
+.sell-payment-options {
+    border: 0;
+    padding: 0;
+    margin: 8px 0 0;
+}
+
+.sell-payment-options legend {
+    margin-bottom: 8px;
+}
+
+.sell-payment-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #353535;
+    border-radius: 12px;
+    background: #101010;
+    cursor: pointer;
+}
+
+.sell-payment-option input {
+    accent-color: #ffd000;
+}
+
+.sell-payment-option span {
+    display: grid;
+    gap: 2px;
+}
+
+.sell-payment-option strong {
+    color: #fff;
+}
+
+.sell-payment-option small,
+.sell-bank-unavailable {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.sell-payment-option.is-disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.sell-bank-summary {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border-left: 2px solid #ffd000;
+    background: #111;
+    color: #aaa;
+    font-size: 13px;
+}
+
+.sell-bank-summary span {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sell-bank-summary strong {
+    color: #fff;
+    text-align: right;
+}
+
+.sell-bank-unavailable a {
+    color: #ffd000;
+    margin-left: 5px;
+}
+
+.sell-confirmation-title {
+    margin: 24px 0 8px;
+    color: #ffd000;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.sell-submit-button {
+    display: flex;
+    width: 100%;
+    min-height: 50px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 12px 18px;
+    border: 1px solid #ffd000;
+    border-radius: 10px;
+    margin: 24px 0 8px;
+    appearance: none;
+    background: #111;
+    color: #ffd000;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.sell-submit-button:hover:not(:disabled) {
+    background: #ffd000;
+    color: #090909;
+    box-shadow: 0 5px 16px rgba(255, 208, 0, .18);
+    transform: translateY(-1px);
+}
+
+.sell-submit-button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+.sell-submit-button:disabled {
+    border-color: #69604a;
+    background: #49453a;
+    color: #c4bdab;
+    cursor: not-allowed;
+    opacity: .75;
+}
+
+.sell-confirmation-list {
+    margin: 0;
+}
+
+.sell-confirmation-list > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 14px 0;
+    border-bottom: 1px solid #292929;
+}
+
+.sell-confirmation-list dt {
+    color: #aaa;
+    font-size: 13px;
+}
+
+.sell-confirmation-list dd {
+    margin: 0;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.sell-confirmation-list dd small {
+    display: block;
+    color: #aaa;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.sell-confirmation-list .sell-confirmation-total dd {
+    color: #ffd000;
+    font-size: 18px;
+}
+
+.sell-confirmation-actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.sell-cancel-button {
+    padding: 12px;
+    color: #ddd;
+    text-align: center;
+}
+
+.sell-pin-action {
+    width: 100%;
+    min-height: 46px;
+    overflow-wrap: anywhere;
+    border: 1px solid #ffd000;
+    border-radius: 10px;
+    background: #ffd000;
+    color: #090909;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.sell-pin-action:hover {
+    background: #ffe16a;
+    color: #090909;
+    box-shadow: 0 5px 16px rgba(255, 208, 0, .18);
+}
+
+.sell-pin-action:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
+}
+
+.sell-pin-action:disabled {
+    border-color: #69604a;
+    background: #49453a;
+    color: #c4bdab;
+    cursor: not-allowed;
+    opacity: .75;
+}
+
+.sell-alert {
+    max-width: 860px;
+    padding: 13px 16px;
+    margin: 0 auto 14px;
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.sell-alert-warning {
+    border: 1px solid rgba(255, 208, 0, .45);
+    background: rgba(255, 208, 0, .08);
+    color: #ffe16a;
+}
+
+.sell-alert-error {
+    border: 1px solid rgba(255, 90, 90, .4);
+    background: rgba(255, 90, 90, .08);
+    color: #ffaaa5;
+}
+
+@media (max-width: 640px) {
+    .sell-estimate {
+        grid-template-columns: 1fr;
+    }
+
+    .sell-confirmation-list > div {
+        gap: 10px;
+    }
+}

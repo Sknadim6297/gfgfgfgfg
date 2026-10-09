@@ -1,0 +1,203 @@
+.support-status-message,
+.support-field-error {
+    display: block;
+    margin: 0 0 14px;
+    color: #ffd000;
+    font-size: 12px;
+}
+
+.support-field-error {
+    margin: 6px 2px 0;
+    color: #ff8a9e;
+}
+
+.support-ticket-list .support-heading {
+    margin-bottom: 16px;
+}
+
+.support-ticket-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    border-top: 1px solid rgba(255, 255, 255, .1);
+}
+
+.support-ticket-info {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.support-ticket-info strong {
+    color: #ffd000;
+    font-size: 12px;
+}
+
+.support-ticket-info span,
+.support-ticket-info small {
+    overflow-wrap: anywhere;
+}
+
+.support-ticket-info span {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.support-ticket-info small,
+.support-empty-state {
+    color: #9799a3;
+    font-size: 11px;
+}
+
+.support-ticket-view,
+.support-notification-link,
+.support-back-link {
+    color: #ffd000;
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.support-ticket-view {
+    flex: 0 0 auto;
+    padding: 8px 13px;
+    border: 1px solid rgba(255, 208, 0, .45);
+    border-radius: 12px;
+}
+
+.support-notification-link {
+    display: block;
+    margin-bottom: 12px;
+    padding: 11px 13px;
+    border: 1px solid rgba(255, 208, 0, .25);
+    border-radius: 12px;
+    background: rgba(255, 208, 0, .06);
+}
+
+.support-pagination {
+    margin-top: 12px;
+}
+
+.support-pagination nav {
+    display: flex;
+    justify-content: center;
+}
+
+.support-pagination svg {
+    width: 18px;
+}
+
+.support-ticket-details {
+    display: grid;
+    gap: 10px;
+    margin: 0 0 22px;
+}
+
+.support-ticket-details > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    font-size: 12px;
+}
+
+.support-ticket-details dt {
+    color: #9799a3;
+    font-weight: 500;
+}
+
+.support-ticket-details dd {
+    margin: 0;
+    color: #fff;
+    text-align: right;
+}
+
+.support-message {
+    margin-top: 12px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .025);
+}
+
+.support-message-admin {
+    border-color: rgba(255, 208, 0, .25);
+    background: rgba(255, 208, 0, .04);
+}
+
+.support-message strong {
+    color: #ffd000;
+    font-size: 12px;
+}
+
+.support-message time {
+    float: right;
+    color: #9799a3;
+    font-size: 10px;
+}
+
+.support-message p,
+.support-admin-message p {
+    margin: 10px 0 0;
+    color: #e5e5e5;
+    font-size: 13px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.support-back-link {
+    display: inline-block;
+    margin-top: 18px;
+}
+
+.support-admin-messages {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.support-admin-message {
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .025);
+}
+
+.support-admin-message > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.support-admin-message strong {
+    color: #ffd000;
+}
+
+.support-admin-message time {
+    color: #9799a3;
+    font-size: 12px;
+}
+
+.support-admin-reply {
+    max-width: 100%;
+}
+
+@media (max-width: 390px) {
+    .support-ticket-row {
+        align-items: flex-start;
+    }
+
+    .support-ticket-info small {
+        line-height: 1.5;
+    }
+
+    .support-admin-message > div {
+        flex-direction: column;
+        gap: 4px;
+    }
+}
