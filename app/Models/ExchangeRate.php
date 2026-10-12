@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -47,11 +48,7 @@ class ExchangeRate extends Model
 
     public function formattedMinimumAmount(): string
     {
-        [$whole, $fraction] = array_pad(explode('.', (string) $this->minimum_amount, 2), 2, '');
-        $whole = preg_replace('/\B(?=(\d{3})+(?!\d))/', ',', $whole) ?? $whole;
-        $fraction = rtrim($fraction, '0');
-
-        return $whole.($fraction === '' ? '' : '.'.$fraction);
+        return Money::formatUsdt((string) $this->minimum_amount);
     }
 
     public function formattedMaximumAmount(): ?string
@@ -60,11 +57,7 @@ class ExchangeRate extends Model
             return null;
         }
 
-        [$whole, $fraction] = array_pad(explode('.', (string) $this->maximum_amount, 2), 2, '');
-        $whole = preg_replace('/\B(?=(\d{3})+(?!\d))/', ',', $whole) ?? $whole;
-        $fraction = rtrim($fraction, '0');
-
-        return $whole.($fraction === '' ? '' : '.'.$fraction);
+        return Money::formatUsdt((string) $this->maximum_amount);
     }
 
     public function updatedBy(): BelongsTo

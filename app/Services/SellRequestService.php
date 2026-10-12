@@ -22,6 +22,7 @@ class SellRequestService
     public function __construct(
         private readonly ExchangeRateResolver $rates,
         private readonly WalletTransactionPinService $transactionPins,
+        private readonly ReferralCommissionService $referralCommissions,
     ) {}
 
     public function availableBalance(User $user): string
@@ -162,7 +163,7 @@ class SellRequestService
         $exchange = ExchangeRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
         $user = User::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
         abort_unless($exchange->available_usd_before !== null, 422, 'This request is not a sell request.');
-        abort_unless($exchange->status === 'pending', 409, 'Only pending sell requests can be approved.');
+        abort_unless($exchange->status === 'pending', 409, 'Only pending sell requests can be completed.');
         abort_unless(
             BalanceLedgerEntry::query()
                 ->where('source_type', 'exchange_request')
@@ -233,7 +234,10 @@ class SellRequestService
         $exchange->forceFill([
             'status' => 'completed',
             'completed_at' => now(),
+            'referral_eligible_at' => now(),
         ])->save();
+
+        $this->referralCommissions->processCompletedSell($exchange);
 
         AuditLog::create([
             'actor_user_id' => null,

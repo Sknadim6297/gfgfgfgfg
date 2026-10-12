@@ -60,6 +60,7 @@ Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly'])->group
         Route::get('/profile/exchanges/{exchangeRequest:request_reference}', [CustomerExchangeRequestController::class, 'show'])->name('profile.exchanges.show');
         Route::get('/profile/referrals', [AuthController::class, 'referrals'])->name('profile.referrals');
         Route::get('/profile/referrals/history', [AuthController::class, 'referralHistory'])->name('profile.referrals.history');
+        Route::get('/profile/referrals/{referral}', [AuthController::class, 'referralMember'])->whereNumber('referral')->name('profile.referrals.member');
         Route::get('/profile/password', [AuthController::class, 'showChangePassword'])->name('profile.password');
         Route::get('/profile/wallet-transaction-pin', [WalletTransactionPinController::class, 'show'])->name('profile.wallet-pin');
         Route::post('/wallet-transaction-pin/otp', [WalletTransactionPinController::class, 'sendOtp'])->name('wallet-pin.otp.send');

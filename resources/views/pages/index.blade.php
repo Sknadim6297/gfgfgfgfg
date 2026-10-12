@@ -81,7 +81,7 @@
 
                 <span class="green-dot"></span>
 
-                LIVE PLATFORM STATS
+                DEMO PLATFORM ACTIVITY
 
                 <span class="title-line"></span>
 
@@ -105,9 +105,7 @@
                             ACTIVE CLIENTS
                         </div>
 
-                        <div class="stat-value">
-                            500
-                        </div>
+                        <div class="stat-value">{{ number_format($demoActivity['active_clients']) }}</div>
 
                     </div>
 
@@ -122,12 +120,10 @@
 
                         <div class="stat-label">
                             OVERALL<br>
-                            DEPOSIT
+                            DEPOSIT (USDT)
                         </div>
 
-                        <div class="stat-value">
-                            $2.5M
-                        </div>
+                        <div class="stat-value">{{ $demoActivity['deposit_display'] }}</div>
 
                     </div>
 
@@ -145,9 +141,7 @@
                             INR
                         </div>
 
-                        <div class="stat-value green">
-                            <i class="bi bi-currency-rupee"></i>27.5Cr
-                        </div>
+                        <div class="stat-value green"><i class="bi bi-currency-rupee"></i>{{ $demoActivity['inr_display'] }}</div>
 
                     </div>
 
@@ -167,15 +161,13 @@
             </thead>
 
             <tbody>
-                <tr><td>+91 96****3461</td><td class="usd">↓ $4,187</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>4,60,570</td></tr>
-                <tr><td>+91 91****8754</td><td class="usd">↓ $3,814</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>4,19,540</td></tr>
-                <tr><td>+91 88****2319</td><td class="usd">↓ $8,062</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>8,86,820</td></tr>
-                <tr><td>+91 90****5467</td><td class="usd">↓ $14,633</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>16,82,795</td></tr>
-                <tr><td>+91 93****7925</td><td class="usd">↓ $7,425</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>8,16,750</td></tr>
-                <tr><td>+91 95****3186</td><td class="usd">↓ $3,118</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>3,42,980</td></tr>
-                <tr><td>+91 87****6542</td><td class="usd">↓ $603</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>66,330</td></tr>
-                <tr><td>+91 98****9317</td><td class="usd">↓ $12,687</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>14,59,005</td></tr>
-                <tr><td>+91 97****2458</td><td class="usd">↓ $7,481</td><td class="inr">↑ <i class="bi bi-currency-rupee"></i>8,22,910</td></tr>
+                @foreach ($demoActivity['transactions'] as $transaction)
+                    <tr>
+                        <td>{{ $transaction['mobile'] }}</td>
+                        <td class="usd">↓ ${{ number_format($transaction['deposit_usdt']) }} USDT</td>
+                        <td class="inr">↑ <i class="bi bi-currency-rupee"></i>{{ \App\Support\DemoPlatformActivity::formatInr($transaction['inr']) }}</td>
+                    </tr>
+                @endforeach
             </tbody>
 
         </table>
@@ -185,6 +177,8 @@
 </div>
 
             </div>
+
+            <p class="demo-activity-disclaimer">Illustrative statistics and sample activity — not live customer transactions.</p>
 
         </section>
 

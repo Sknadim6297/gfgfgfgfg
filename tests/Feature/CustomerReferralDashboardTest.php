@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Models\InrLedgerEntry;
+use App\Models\ExchangeRequest;
+use App\Models\BalanceLedgerEntry;
 use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -51,20 +54,19 @@ class CustomerReferralDashboardTest extends TestCase
             ->assertSee('Total commission earned')
             ->assertSee('Qualification progress')
             ->assertSee('Commission history')
-            ->assertSee('Member '.$direct->customer_id)
+            ->assertSee('Private Referred Name')
+            ->assertSee('Customer '.$this->maskedCustomerId($direct->customer_id))
             ->assertSee('₹3,000.00')
             ->assertSee('₹1,750.00')
             ->assertSee('₹1,000.00')
             ->assertSee('₹500.00')
             ->assertSee('INR ledger #')
-            ->assertSee('Reward credited')
-            ->assertSee('Inactive')
+            ->assertSee('Qualified')
             ->assertSee('Level 1')
             ->assertSee('Level 2')
             ->assertSee('Level 3')
-            ->assertSee('500.000000 USDT')
+            ->assertSee('500 USDT')
             ->assertDontSee('Total Direct Referrals')
-            ->assertDontSee('Private Referred Name')
             ->assertDontSee('private-referred@example.test');
     }
 
@@ -86,13 +88,91 @@ class CustomerReferralDashboardTest extends TestCase
             ->assertSee('Referral dashboard')
             ->assertSee('Qualification progress')
             ->assertSee('Estimated reward — not earned or payable until qualification.')
-            ->assertSee($referrals[11]->customer_id)
+            ->assertSee($this->maskedCustomerId($referrals[11]->customer_id))
             ->assertDontSee($referrals[11]->email)
-            ->assertDontSee($referrals[11]->name);
+            ->assertSee($referrals[11]->name);
 
         $this->get(route('profile.referrals.history', ['referral_page' => 2]))
             ->assertOk()
-            ->assertSee($referrals[1]->customer_id);
+            ->assertSee($this->maskedCustomerId($referrals[1]->customer_id));
+    }
+
+    public function test_configured_hierarchy_levels_show_locked_unlocked_and_qualified_states_from_real_records(): void
+    {
+        $owner = User::factory()->create();
+        $direct = User::factory()->create(['referred_by_user_id' => $owner->id]);
+        User::factory()->create(['referred_by_user_id' => $direct->id]);
+        $qualified = User::factory()->create(['referred_by_user_id' => $direct->id]);
+        $withdrawal = $this->completedWithdrawal($qualified, '25000.00', '50.00000000');
+        ReferralQualification::create([
+            'qualified_user_id' => $qualified->id,
+            'qualifying_withdrawal_id' => $withdrawal->id,
+            'cumulative_usdt_equivalent' => '500.00000000',
+            'threshold_usdt' => '500.00000000',
+            'qualified_at' => now(),
+        ]);
+
+        $this->actingAs($owner, 'web')
+            ->get(route('profile.referrals'))
+            ->assertOk()
+            ->assertSee('Unlocked · 1 member')
+            ->assertSee('Qualified · 2 members')
+            ->assertSee('Locked · 0 members');
+    }
+
+    public function test_referral_dashboard_and_private_member_page_show_completed_sell_progress_and_history(): void
+    {
+        $owner = User::factory()->create();
+        $referral = User::factory()->create([
+            'name' => 'Referral Name',
+            'referred_by_user_id' => $owner->id,
+        ]);
+        $sell = ExchangeRequest::create([
+            'user_id' => $referral->id,
+            'request_reference' => 'QPMSELLREFERRAL01',
+            'rate_plan_name' => 'Saved sell rate',
+            'usdt_amount' => '12.50000000',
+            'exchange_rate' => '105.12345678',
+            'inr_amount' => '1314.04',
+            'available_usd_before' => '12.50000000',
+            'status' => 'completed',
+            'completed_at' => now(),
+            'referral_eligible_at' => now(),
+        ]);
+        DB::table('exchange_requests')
+            ->where('request_reference', 'QPMSELLREFERRAL01')
+            ->update(['referral_eligible_at' => now()]);
+        BalanceLedgerEntry::create([
+            'user_id' => $referral->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $sell->id,
+            'entry_type' => 'debit',
+            'amount' => $sell->usdt_amount,
+        ]);
+        InrLedgerEntry::create([
+            'user_id' => $referral->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $sell->id,
+            'entry_type' => 'credit',
+            'amount' => $sell->inr_amount,
+        ]);
+
+        $this->actingAs($owner, 'web')
+            ->get(route('profile.referrals'))
+            ->assertOk()
+            ->assertSee('Referral Name')
+            ->assertSee('Completed sell volume')
+            ->assertSee('12.5 USDT')
+            ->assertSee(route('profile.referrals.member', $referral));
+
+        $this->get(route('profile.referrals.member', $referral))
+            ->assertOk()
+            ->assertSee('12.5 / 500 USDT')
+            ->assertSee('QPMSELLREFERRAL01')
+            ->assertSee('12.5 USDT')
+            ->assertSee('₹105.12345678 / USDT')
+            ->assertSee('₹1,314.04')
+            ->assertSee('Eligible');
     }
 
     public function test_referral_and_wallet_history_are_scoped_to_the_authenticated_customer(): void
@@ -115,8 +195,17 @@ class CustomerReferralDashboardTest extends TestCase
 
         $this->get(route('profile.referrals.history'))
             ->assertOk()
-            ->assertSee($qualified->customer_id)
+            ->assertSee($this->maskedCustomerId($qualified->customer_id))
             ->assertDontSee($otherQualified->customer_id);
+
+        $this->get(route('profile.referrals.member', $qualified))
+            ->assertOk()
+            ->assertSee($qualified->name)
+            ->assertSee($this->maskedCustomerId($qualified->customer_id))
+            ->assertDontSee($qualified->email)
+            ->assertDontSee($otherQualified->customer_id);
+
+        $this->get(route('profile.referrals.member', $otherQualified))->assertNotFound();
     }
 
     public function test_referral_pages_require_a_customer_account(): void
@@ -129,6 +218,18 @@ class CustomerReferralDashboardTest extends TestCase
             ->get(route('profile.referrals'))
             ->assertForbidden();
         $this->get(route('profile.referrals.history'))->assertForbidden();
+        $this->get(route('profile.referrals.member', User::factory()->create()))->assertForbidden();
+    }
+
+    private function maskedCustomerId(string $customerId): string
+    {
+        if (mb_strlen($customerId) <= 4) {
+            return str_repeat('•', mb_strlen($customerId));
+        }
+
+        return mb_substr($customerId, 0, 2)
+            .str_repeat('•', max(4, mb_strlen($customerId) - 4))
+            .mb_substr($customerId, -2);
     }
 
     private function completedWithdrawal(

@@ -12,6 +12,7 @@ class ReferralQualification extends Model
     protected $fillable = [
         'qualified_user_id',
         'qualifying_withdrawal_id',
+        'qualifying_exchange_request_id',
         'cumulative_usdt_equivalent',
         'threshold_usdt',
         'qualified_at',
@@ -40,6 +41,11 @@ class ReferralQualification extends Model
     public function qualifyingWithdrawal(): BelongsTo
     {
         return $this->belongsTo(WithdrawalRequest::class, 'qualifying_withdrawal_id');
+    }
+
+    public function qualifyingExchangeRequest(): BelongsTo
+    {
+        return $this->belongsTo(ExchangeRequest::class, 'qualifying_exchange_request_id');
     }
 
     public function commissions(): HasMany

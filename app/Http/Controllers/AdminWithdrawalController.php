@@ -153,10 +153,6 @@ class AdminWithdrawalController extends Controller
                 ...($rateSnapshot === null ? [] : ['usdt_inr_rate_snapshot' => $rateSnapshot]),
             ])->save();
 
-            if ($validated['status'] === 'completed') {
-                $referralCommissions->processCompletedWithdrawal($withdrawal, $admin->id);
-            }
-
             AuditLog::create([
                 'actor_user_id' => $admin->id,
                 'subject_user_id' => $withdrawal->user_id,

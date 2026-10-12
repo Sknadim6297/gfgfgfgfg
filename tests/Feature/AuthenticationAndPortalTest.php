@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\ExchangeRate;
 use App\Models\ExchangeRequest;
 use App\Models\User;
+use App\Support\DemoPlatformActivity;
 use App\Support\Totp;
 use Database\Seeders\AdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -515,20 +516,20 @@ class AuthenticationAndPortalTest extends TestCase
 
         $this->actingAs($referrer, 'web')->get(route('profile.referrals'))
             ->assertOk()
-            ->assertSee('My Referrals')
-            ->assertSee('Invite friends. Earn rewards as they qualify.')
+            ->assertSee('Referral dashboard')
+            ->assertSee('Track your invitations, qualification progress, and credited rewards.')
             ->assertSee($referrer->referral_code)
             ->assertSee(route('register', ['ref' => $referrer->referral_code]))
-            ->assertSee('Total Earned')
-            ->assertSee('View Referral History')
+            ->assertSee('Total referrals')
+            ->assertSee('Commission history')
             ->assertDontSee('Total Direct Referrals')
             ->assertDontSee('Qualified Referrals');
 
         $this->get(route('profile.referrals.history'))
             ->assertOk()
-            ->assertSee($referred->customer_id)
-            ->assertSee('Qualification status')
-            ->assertDontSee('Private Customer Name')
+            ->assertSee('Customer '.substr($referred->customer_id, 0, 2).str_repeat('•', max(4, strlen($referred->customer_id) - 4)).substr($referred->customer_id, -2))
+            ->assertSee('Qualification progress')
+            ->assertSee('Private Customer Name')
             ->assertDontSee($referred->email);
     }
 
@@ -610,9 +611,10 @@ class AuthenticationAndPortalTest extends TestCase
             ->assertSee(route('profile'));
     }
 
-    public function test_homepage_restores_original_demo_rate_stats_and_conversion_rows(): void
+    public function test_homepage_discloses_date_generated_demo_activity_and_conversion_rows(): void
     {
         $user = User::factory()->create(['balance' => '0.00000000']);
+        $demo = DemoPlatformActivity::forDate();
         $response = $this->actingAs($user, 'web')->get(route('home'))
             ->assertOk()
             ->assertSee('LIVE RATE')
@@ -620,19 +622,47 @@ class AuthenticationAndPortalTest extends TestCase
             ->assertSee('>100</span>', false)
             ->assertSee('Fast &amp; secure USDT', false)
             ->assertSee('Exchange Now')
-            ->assertSee('LIVE PLATFORM STATS')
-            ->assertSee('500')
-            ->assertSee('$2.5M')
-            ->assertSee('27.5Cr')
-            ->assertSee('+91 96****3461')
-            ->assertSee('$4,187')
-            ->assertSee('4,60,570')
+            ->assertSee('DEMO PLATFORM ACTIVITY')
+            ->assertSee('Illustrative statistics and sample activity — not live customer transactions.')
+            ->assertSee(number_format($demo['active_clients']))
+            ->assertSee($demo['deposit_display'])
+            ->assertSee($demo['inr_display'])
+            ->assertSee('USDT')
             ->assertSee('Best Rate')
             ->assertSee('Freeze-Free Transactions')
             ->assertSee('Trusted Banking Network');
 
         $this->assertStringNotContainsString('No exchange activity is available', $response->getContent());
         $this->assertStringNotContainsString('Exchange service unavailable', $response->getContent());
+        $this->assertSame(9, substr_count($response->getContent(), 'class="usd">↓ $'));
+    }
+
+    public function test_homepage_demo_activity_is_independent_of_real_customer_balances_and_sell_records(): void
+    {
+        $demo = DemoPlatformActivity::forDate();
+        $customer = User::factory()->create([
+            'balance' => '987654321.00000000',
+            'inr_balance' => '1234567890.00',
+        ]);
+        ExchangeRequest::create([
+            'user_id' => $customer->id,
+            'request_reference' => 'QPMSELLREALRECORD',
+            'rate_plan_name' => 'Actual customer rate',
+            'usdt_amount' => '87654321.00000000',
+            'exchange_rate' => '110.00000000',
+            'inr_amount' => '9641975310.00',
+            'available_usd_before' => '87654321.00000000',
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($customer, 'web')
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee($demo['deposit_display'])
+            ->assertSee($demo['inr_display'])
+            ->assertDontSee('$87,654,321')
+            ->assertDontSee('₹9,641,975,310');
     }
 
     public function test_homepage_formats_live_rate_for_display_without_changing_stored_precision(): void
@@ -1279,7 +1309,7 @@ class AuthenticationAndPortalTest extends TestCase
         $this->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('All-time recorded amounts. USD, USDT, and INR are separate measures and are not combined.')
-            ->assertSee('0.000000 USDT')
+            ->assertSee('0 USDT')
             ->assertSee('₹0.00 INR at saved request rates')
             ->assertSee('$0.00')
             ->assertSee('₹0.00')

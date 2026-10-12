@@ -7,8 +7,8 @@ use App\Models\InrLedgerEntry;
 use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
+use App\Models\ExchangeRequest;
 use App\Models\User;
-use App\Models\WithdrawalRequest;
 use App\Support\Decimal;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -35,21 +35,22 @@ class ReferralCommissionService
         return (string) $rate;
     }
 
-    public function processCompletedWithdrawal(WithdrawalRequest $withdrawal, ?int $actorUserId): void
+    public function processCompletedSell(ExchangeRequest $exchange): void
     {
         if (DB::transactionLevel() === 0) {
-            throw new LogicException('Referral qualification must run inside the withdrawal transaction.');
+            throw new LogicException('Referral qualification must run inside the sell conversion transaction.');
         }
 
-        if ($withdrawal->status !== 'completed'
-            || $withdrawal->completed_at === null
-            || $withdrawal->usdt_inr_rate_snapshot === null
-            || Decimal::compare((string) $withdrawal->usdt_inr_rate_snapshot, '0.00000000', 8) <= 0) {
+        if ($exchange->status !== 'completed'
+            || $exchange->completed_at === null
+            || $exchange->referral_eligible_at === null
+            || $exchange->available_usd_before === null
+            || Decimal::compare((string) $exchange->usdt_amount, '0.00000000', 8) <= 0) {
             return;
         }
 
         $qualifiedUser = User::query()
-            ->whereKey($withdrawal->user_id)
+            ->whereKey($exchange->user_id)
             ->lockForUpdate()
             ->firstOrFail();
 
@@ -60,56 +61,54 @@ class ReferralCommissionService
             return;
         }
 
-        $withdrawals = WithdrawalRequest::query()
+        $sales = ExchangeRequest::query()
+            ->completedSell()
             ->where('user_id', $qualifiedUser->id)
-            ->where('status', 'completed')
-            ->whereNotNull('completed_at')
-            ->whereNotNull('usdt_inr_rate_snapshot')
+            ->whereNotNull('referral_eligible_at')
             ->orderBy('completed_at')
             ->orderBy('id')
             ->lockForUpdate()
-            ->get(['id', 'amount', 'usdt_inr_rate_snapshot', 'completed_at']);
+            ->get(['id', 'usdt_amount', 'completed_at']);
 
         $cumulative = '0.00000000';
-        $triggeringWithdrawalId = null;
+        $triggeringExchangeId = null;
         $qualifiedAt = null;
-        foreach ($withdrawals as $completedWithdrawal) {
-            if (Decimal::compare((string) $completedWithdrawal->usdt_inr_rate_snapshot, '0.00000000', 8) <= 0) {
-                continue;
-            }
-
-            $usdtEquivalent = Decimal::divideToScale(
-                (string) $completedWithdrawal->amount,
-                (string) $completedWithdrawal->usdt_inr_rate_snapshot,
-                dividendScale: 2,
-                divisorScale: 8,
-                resultScale: 8,
-            );
-            $cumulative = Decimal::add($cumulative, $usdtEquivalent, 8);
-
-            if ($triggeringWithdrawalId === null
-                && Decimal::compare($cumulative, self::QUALIFICATION_THRESHOLD_USDT, 8) >= 0) {
-                $triggeringWithdrawalId = $completedWithdrawal->id;
-                $qualifiedAt = $completedWithdrawal->completed_at;
+        foreach ($sales as $completedSell) {
+            $cumulative = Decimal::add($cumulative, (string) $completedSell->usdt_amount, 8);
+            if (Decimal::compare($cumulative, self::QUALIFICATION_THRESHOLD_USDT, 8) >= 0) {
+                $triggeringExchangeId = (int) $completedSell->id;
+                $qualifiedAt = $completedSell->completed_at;
                 break;
             }
         }
 
-        if ($triggeringWithdrawalId === null || $qualifiedAt === null) {
+        if ($triggeringExchangeId === null || $qualifiedAt === null) {
             return;
         }
 
+        $this->qualifyAndCredit(
+            $qualifiedUser,
+            $cumulative,
+            $qualifiedAt,
+            $triggeringExchangeId,
+        );
+    }
+
+    private function qualifyAndCredit(
+        User $qualifiedUser,
+        string $cumulative,
+        CarbonInterface $qualifiedAt,
+        int $triggeringExchangeId,
+    ): void {
         $qualification = ReferralQualification::query()->create([
             'qualified_user_id' => $qualifiedUser->id,
-            'qualifying_withdrawal_id' => $triggeringWithdrawalId,
+            'qualifying_exchange_request_id' => $triggeringExchangeId,
             'cumulative_usdt_equivalent' => $cumulative,
             'threshold_usdt' => self::QUALIFICATION_THRESHOLD_USDT,
             'qualified_at' => $qualifiedAt,
         ]);
 
-        $activeLevels = ReferralCommissionLevel::query()
-            ->where('is_active', true)
-            ->whereIn('level', [1, 2, 3])
+        $levels = ReferralCommissionLevel::query()
             ->orderBy('level')
             ->lockForUpdate()
             ->get()
@@ -118,28 +117,27 @@ class ReferralCommissionService
         $this->creditEligibleUplines(
             $qualifiedUser,
             $qualification,
-            $activeLevels,
-            (int) $triggeringWithdrawalId,
-            $actorUserId,
+            $levels,
+            $triggeringExchangeId,
             $qualifiedAt,
         );
     }
 
     /**
-     * @param  Collection<int, ReferralCommissionLevel>  $activeLevels
+     * @param  Collection<int, ReferralCommissionLevel>  $levels
      */
     private function creditEligibleUplines(
         User $qualifiedUser,
         ReferralQualification $qualification,
-        Collection $activeLevels,
-        int $triggeringWithdrawalId,
-        ?int $actorUserId,
+        Collection $levels,
+        int $triggeringExchangeId,
         CarbonInterface $qualifiedAt,
     ): void {
         $visited = [(int) $qualifiedUser->id => true];
         $uplineId = $qualifiedUser->referred_by_user_id;
 
-        for ($levelNumber = 1; $levelNumber <= 3 && $uplineId !== null; $levelNumber++) {
+        $maxLevel = (int) $levels->keys()->max();
+        for ($levelNumber = 1; $levelNumber <= $maxLevel && $uplineId !== null; $levelNumber++) {
             $uplineId = (int) $uplineId;
             if (isset($visited[$uplineId])) {
                 break;
@@ -151,15 +149,14 @@ class ReferralCommissionService
                 break;
             }
 
-            $level = $activeLevels->get($levelNumber);
-            if ($level !== null && $upline->role === 'user' && $upline->account_status === 'active') {
+            $level = $levels->get($levelNumber);
+            if ($level?->is_active && $upline->role === 'user' && $upline->account_status === 'active') {
                 $this->creditCommission(
                     $qualification,
                     $upline,
                     $qualifiedUser,
                     $level,
-                    $triggeringWithdrawalId,
-                    $actorUserId,
+                    $triggeringExchangeId,
                     $qualifiedAt,
                 );
             }
@@ -173,8 +170,7 @@ class ReferralCommissionService
         User $beneficiary,
         User $qualifiedUser,
         ReferralCommissionLevel $level,
-        int $triggeringWithdrawalId,
-        ?int $actorUserId,
+        int $triggeringExchangeId,
         CarbonInterface $qualifiedAt,
     ): void {
         $amount = (string) $level->amount;
@@ -195,7 +191,7 @@ class ReferralCommissionService
                 'active' => $level->is_active,
                 'updated_at' => $level->updated_at?->toISOString(),
             ],
-            'triggering_withdrawal_id' => $triggeringWithdrawalId,
+            'triggering_exchange_request_id' => $triggeringExchangeId,
             'status' => 'pending',
             'qualified_at' => $qualifiedAt,
         ]);
@@ -206,7 +202,7 @@ class ReferralCommissionService
 
         $ledgerEntry = InrLedgerEntry::query()->create([
             'user_id' => $beneficiary->id,
-            'actor_user_id' => $actorUserId,
+            'actor_user_id' => null,
             'source_type' => 'referral_commission',
             'source_id' => $commission->id,
             'entry_type' => 'credit',

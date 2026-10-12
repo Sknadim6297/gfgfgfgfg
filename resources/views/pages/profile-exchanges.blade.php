@@ -43,18 +43,14 @@
                 @else
                     <div class="exchange-history-list">
                         @foreach ($exchanges as $exchange)
-                            @php
-                                $displayAmount = rtrim(rtrim((string) $exchange->usdt_amount, '0'), '.');
-                                $displayRate = rtrim(rtrim((string) $exchange->exchange_rate, '0'), '.');
-                            @endphp
                             <article class="exchange-history-card">
                                 <div class="exchange-history-card-heading">
                                     <div><span class="wallet-history-label">Reference ID</span><strong>{{ $exchange->request_reference ?: ($exchange->transaction_reference ?: 'EXC-'.$exchange->id) }}</strong></div>
                                     <span class="portal-badge {{ in_array($exchange->status, ['approved', 'completed'], true) ? 'approved' : $exchange->status }}">{{ ucfirst($exchange->status) }}</span>
                                 </div>
                                 <dl class="exchange-history-values">
-                                    <div><dt>USDT Sold</dt><dd>{{ $exchange->available_usd_before !== null ? \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) : $displayAmount }} USDT</dd></div>
-                                    <div><dt>Rate</dt><dd>₹{{ $displayRate }} / USDT</dd></div>
+                                    <div><dt>USDT Sold</dt><dd>{{ \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) }} USDT</dd></div>
+                                    <div><dt>Rate</dt><dd>₹{{ \App\Models\ExchangeRate::formatDecimal($exchange->exchange_rate) }} / USDT</dd></div>
                                     <div><dt>INR Amount</dt><dd>{{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }}</dd></div>
                                     <div><dt>Submitted</dt><dd><time datetime="{{ $exchange->created_at->toIso8601String() }}">{{ $exchange->created_at->format('M j, Y · H:i') }}</time></dd></div>
                                 </dl>

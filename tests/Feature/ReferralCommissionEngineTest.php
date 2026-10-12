@@ -9,7 +9,6 @@ use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
-use App\Services\ReferralCommissionService;
 use App\Support\Decimal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -83,7 +82,7 @@ class ReferralCommissionEngineTest extends TestCase
         $this->assertSame(0, ReferralCommission::query()->count());
     }
 
-    public function test_each_completed_withdrawal_uses_its_saved_rate_and_qualifies_at_exactly_500(): void
+    public function test_completed_withdrawals_keep_rate_snapshots_but_do_not_qualify_referrals(): void
     {
         $this->baseRate('100.00000000');
         [$levelOne, $levelTwo, $levelThree, $customer] = $this->referralChain();
@@ -99,26 +98,14 @@ class ReferralCommissionEngineTest extends TestCase
 
         $this->assertSame('100.00000000', $first->fresh()->usdt_inr_rate_snapshot);
         $this->assertSame('200.00000000', $second->fresh()->usdt_inr_rate_snapshot);
-        $qualification = ReferralQualification::query()->sole();
-        $this->assertSame('500.00000000', $qualification->cumulative_usdt_equivalent);
-        $this->assertSame($second->id, $qualification->qualifying_withdrawal_id);
-        $this->assertSame(3, ReferralCommission::query()->count());
-        $this->assertSame('1500.00', $levelOne->fresh()->inr_balance);
-        $this->assertSame('1000.00', $levelTwo->fresh()->inr_balance);
-        $this->assertSame('500.00', $levelThree->fresh()->inr_balance);
-        $this->assertCommissionLedgerConsistency();
-
-        $this->actingAs($levelOne, 'web')
-            ->get(route('profile.referrals'))
-            ->assertOk()
-            ->assertSee('Referral dashboard')
-            ->assertSee('Member '.$customer->customer_id)
-            ->assertSee('500.000000 USDT')
-            ->assertSee('₹1,500.00')
-            ->assertSee('INR ledger #');
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
+        $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
+        $this->assertSame('0.00', $levelTwo->fresh()->inr_balance);
+        $this->assertSame('0.00', $levelThree->fresh()->inr_balance);
     }
 
-    public function test_multiple_completed_withdrawals_cumulatively_qualify_at_threshold(): void
+    public function test_multiple_completed_withdrawals_alone_never_qualify_referrals(): void
     {
         $this->baseRate();
         [, , , $customer] = $this->referralChain();
@@ -129,12 +116,11 @@ class ReferralCommissionEngineTest extends TestCase
             $this->completeFromPending($withdrawal, $admin)->assertRedirect();
         }
 
-        $qualification = ReferralQualification::query()->sole();
-        $this->assertSame('500.00000000', $qualification->cumulative_usdt_equivalent);
-        $this->assertSame(3, ReferralCommission::query()->count());
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
     }
 
-    public function test_disabled_level_is_not_credited_and_upline_levels_do_not_shift(): void
+    public function test_withdrawal_completion_does_not_credit_any_referral_level(): void
     {
         $this->baseRate();
         [$levelOne, $levelTwo, $levelThree, $customer] = $this->referralChain();
@@ -144,14 +130,14 @@ class ReferralCommissionEngineTest extends TestCase
 
         $this->completeFromPending($withdrawal, $admin)->assertRedirect();
 
-        $this->assertSame('1500.00', $levelOne->fresh()->inr_balance);
+        $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
         $this->assertSame('0.00', $levelTwo->fresh()->inr_balance);
-        $this->assertSame('500.00', $levelThree->fresh()->inr_balance);
-        $this->assertSame([1, 3], ReferralCommission::query()->orderBy('level')->pluck('level')->all());
-        $this->assertCommissionLedgerConsistency();
+        $this->assertSame('0.00', $levelThree->fresh()->inr_balance);
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
     }
 
-    public function test_commission_engine_uses_configured_amounts_and_snapshots_them(): void
+    public function test_configured_commission_amounts_are_not_triggered_by_withdrawals(): void
     {
         $this->baseRate();
         [$levelOne, , , $customer] = $this->referralChain();
@@ -160,13 +146,12 @@ class ReferralCommissionEngineTest extends TestCase
 
         $this->completeFromPending($withdrawal, $this->admin())->assertRedirect();
 
-        $commission = ReferralCommission::query()->where('level', 1)->sole();
-        $this->assertSame('1777.77', $commission->amount);
-        $this->assertSame('1777.77', $commission->configuration_snapshot['amount']);
-        $this->assertSame('1777.77', $levelOne->fresh()->inr_balance);
+        $this->assertSame(0, ReferralCommission::query()->count());
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
     }
 
-    public function test_missing_uplines_still_record_qualification_without_creating_commissions(): void
+    public function test_completed_withdrawal_without_uplines_does_not_create_sell_qualification(): void
     {
         $this->baseRate();
         $customer = User::factory()->create();
@@ -175,11 +160,11 @@ class ReferralCommissionEngineTest extends TestCase
 
         $this->completeFromPending($withdrawal, $admin)->assertRedirect();
 
-        $this->assertSame(1, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralQualification::query()->count());
         $this->assertSame(0, ReferralCommission::query()->count());
     }
 
-    public function test_duplicate_completion_and_reprocessing_do_not_double_credit(): void
+    public function test_duplicate_withdrawal_completion_does_not_duplicate_or_create_referral_credits(): void
     {
         $this->baseRate();
         [$levelOne, , , $customer] = $this->referralChain();
@@ -189,52 +174,27 @@ class ReferralCommissionEngineTest extends TestCase
         $this->completeFromPending($withdrawal, $admin)->assertRedirect();
         $this->complete($withdrawal, $admin)->assertUnprocessable();
 
-        DB::transaction(function () use ($withdrawal, $admin): void {
-            $locked = WithdrawalRequest::query()->whereKey($withdrawal->id)->lockForUpdate()->firstOrFail();
-            app(ReferralCommissionService::class)->processCompletedWithdrawal($locked, $admin->id);
-        });
-
-        $this->assertSame(1, ReferralQualification::query()->count());
-        $this->assertSame(1, ReferralCommission::query()->where('level', 1)->count());
-        $this->assertSame('1500.00', $levelOne->fresh()->inr_balance);
-        $this->assertCommissionLedgerConsistency();
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
+        $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
     }
 
-    public function test_referral_credit_failure_rolls_back_completion_rate_qualification_and_balances(): void
+    public function test_withdrawal_completion_does_not_create_referral_credits(): void
     {
         $this->baseRate();
         [$levelOne, , , $customer] = $this->referralChain();
         $admin = $this->admin();
         $withdrawal = $this->withdrawal($customer, '50000.00');
-        DB::unprepared(<<<'SQL'
-CREATE TRIGGER fail_referral_credit BEFORE INSERT ON inr_ledger_entries
-WHEN NEW.source_type = 'referral_commission'
-BEGIN
-    SELECT RAISE(ABORT, 'forced referral ledger failure');
-END
-SQL);
+        $this->completeFromPending($withdrawal, $admin)->assertRedirect();
 
-        try {
-            $response = $this->completeFromPending($withdrawal, $admin);
-        } finally {
-            DB::unprepared('DROP TRIGGER IF EXISTS fail_referral_credit');
-        }
-        $response->assertServerError();
-
-        $this->assertSame('processing', $withdrawal->fresh()->status);
-        $this->assertNull($withdrawal->fresh()->usdt_inr_rate_snapshot);
+        $this->assertSame('completed', $withdrawal->fresh()->status);
+        $this->assertNotNull($withdrawal->fresh()->usdt_inr_rate_snapshot);
         $this->assertSame(0, ReferralQualification::query()->count());
         $this->assertSame(0, ReferralCommission::query()->count());
         $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
-        $this->assertSame(0, $withdrawal->inrLedgerEntries()->where('entry_type', 'capture')->count());
-        $this->assertDatabaseMissing('audit_logs', [
-            'auditable_type' => WithdrawalRequest::class,
-            'auditable_id' => $withdrawal->id,
-            'event' => 'admin.withdrawal_completed',
-        ]);
     }
 
-    public function test_referral_cycles_stop_safely_at_existing_ancestors(): void
+    public function test_withdrawal_based_cycle_does_not_generate_referral_commissions(): void
     {
         $this->baseRate();
         [$levelOne, $levelTwo, $levelThree, $customer] = $this->referralChain();
@@ -243,8 +203,8 @@ SQL);
 
         $this->completeFromPending($withdrawal, $this->admin())->assertRedirect();
 
-        $this->assertSame(1, ReferralCommission::query()->count());
-        $this->assertSame('1500.00', $levelOne->fresh()->inr_balance);
+        $this->assertSame(0, ReferralCommission::query()->count());
+        $this->assertSame('0.00', $levelOne->fresh()->inr_balance);
         $this->assertSame('0.00', $levelTwo->fresh()->inr_balance);
         $this->assertSame('0.00', $levelThree->fresh()->inr_balance);
     }
@@ -357,17 +317,4 @@ SQL);
         ]);
     }
 
-    private function assertCommissionLedgerConsistency(): void
-    {
-        $commissions = ReferralCommission::query()->with('ledgerEntry', 'beneficiary')->get();
-        foreach ($commissions as $commission) {
-            $this->assertSame('credited', $commission->status);
-            $this->assertNotNull($commission->credited_at);
-            $this->assertNotNull($commission->ledger_entry_id);
-            $this->assertSame('referral_commission', $commission->ledgerEntry->source_type);
-            $this->assertSame($commission->id, $commission->ledgerEntry->source_id);
-            $this->assertSame($commission->beneficiary_user_id, $commission->ledgerEntry->user_id);
-            $this->assertSame($commission->amount, $commission->ledgerEntry->amount);
-        }
-    }
 }

@@ -358,6 +358,14 @@ body {
     background: #84742e;
 }
 
+.demo-activity-disclaimer {
+    margin: 14px 0 0;
+    color: #aaa;
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+}
+
 
 /* =====================================
            STAT ITEMS

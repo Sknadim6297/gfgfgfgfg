@@ -80,7 +80,7 @@ final class AdminAuditPresenter
         }
 
         if ($key === 'usdt_amount') {
-            return Money::formatUsdt($value, 6).' USDT';
+            return Money::formatUsdt($value).' USDT';
         }
 
         if ($key === 'inr_amount' || in_array($key, ['usdt_inr_rate_snapshot', 'exchange_rate', 'rate'], true)) {

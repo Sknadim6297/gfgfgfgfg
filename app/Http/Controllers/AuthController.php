@@ -7,9 +7,9 @@ use App\Models\ExchangeRequest;
 use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\User;
-use App\Models\WithdrawalRequest;
 use App\Services\ReferralCommissionService;
 use App\Support\Decimal;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -236,41 +236,106 @@ class AuthController extends Controller
         return $this->referralDashboard($user);
     }
 
-    private function referralDashboard(User $user): View
+    public function referralMember(Request $request, User $referral): View
     {
-        $levels = ReferralCommissionLevel::query()
-            ->whereIn('level', [1, 2, 3])
-            ->orderBy('level')
-            ->get(['level', 'amount', 'is_active']);
-        $referralQuery = User::query()
-            ->where('referred_by_user_id', $user->id)
-            ->where('role', 'user');
-        $totalReferrals = (clone $referralQuery)->count();
-        $qualifiedReferrals = (clone $referralQuery)->whereHas('referralQualification')->count();
-        $pendingReferrals = $totalReferrals - $qualifiedReferrals;
-        $referrals = (clone $referralQuery)
-            ->with('referralQualification:qualified_user_id,qualified_at')
-            ->latest('created_at')
+        $user = $request->user('web');
+        abort_unless($user?->role === 'user', 403);
+        abort_unless($referral->role === 'user' && (int) $referral->referred_by_user_id === (int) $user->id, 404);
+
+        $referral->load('referralQualification');
+        $activity = $this->referralSalesSummary(collect([$referral]))[(int) $referral->id]
+            ?? ['total_sell_volume' => '0.00000000', 'eligible_sell_volume' => '0.00000000', 'latest_sell_at' => null];
+        $qualifiedAt = $referral->referralQualification?->qualified_at;
+        $legacyWithdrawalQualification = $referral->referralQualification?->qualifying_withdrawal_id !== null
+            && $referral->referralQualification?->qualifying_exchange_request_id === null;
+        $eligibleVolume = (string) $activity['eligible_sell_volume'];
+        $threshold = ReferralCommissionService::QUALIFICATION_THRESHOLD_USDT;
+        $remaining = $referral->referralQualification?->qualifying_exchange_request_id !== null
+            || Decimal::compare($eligibleVolume, $threshold, 8) >= 0
+            ? '0.00000000'
+            : Decimal::subtract($threshold, $eligibleVolume, 8);
+
+        $sells = ExchangeRequest::query()
+            ->completedSell()
+            ->where('user_id', $referral->id)
+            ->latest('completed_at')
             ->orderByDesc('id')
-            ->paginate(10, ['id', 'customer_id', 'referred_by_user_id', 'created_at'], 'referral_page')
+            ->paginate(15, ['id', 'request_reference', 'user_id', 'usdt_amount', 'exchange_rate', 'inr_amount', 'status', 'completed_at', 'referral_eligible_at'], 'sell_page')
             ->withQueryString();
-        $referralProgress = $this->referralProgress($referrals->getCollection());
         $commissions = $user->referralCommissions()
+            ->where('qualified_user_id', $referral->id)
             ->with([
-                'qualifiedUser:id,customer_id',
-                'qualification:id,cumulative_usdt_equivalent',
+                'qualification:id,cumulative_usdt_equivalent,qualified_at,qualifying_exchange_request_id,qualifying_withdrawal_id',
+                'triggeringExchangeRequest:id,request_reference',
+                'triggeringWithdrawal:id,request_reference',
                 'ledgerEntry:id,user_id,source_type,source_id,entry_type,amount,created_at',
             ])
             ->latest('qualified_at')
             ->orderByDesc('id')
             ->paginate(10, ['*'], 'commission_page')
             ->withQueryString();
+        $commissionEarned = (string) ($user->referralCommissions()
+            ->where('qualified_user_id', $referral->id)
+            ->where('status', 'credited')
+            ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_earned')
+            ->value('total_earned') ?? '0.00');
+
+        return view('pages.profile-referral-member', [
+            'user' => $user,
+            'referral' => $referral,
+            'maskedCustomerId' => $this->maskCustomerId((string) $referral->customer_id),
+            'totalSellVolume' => (string) $activity['total_sell_volume'],
+            'eligibleSellVolume' => $eligibleVolume,
+            'latestSellAt' => $activity['latest_sell_at'] ? Carbon::parse($activity['latest_sell_at']) : null,
+            'threshold' => $threshold,
+            'remaining' => $remaining,
+            'qualified' => $referral->referralQualification !== null,
+            'legacyWithdrawalQualification' => $legacyWithdrawalQualification,
+            'qualifiedAt' => $qualifiedAt,
+            'sells' => $sells,
+            'commissions' => $commissions,
+            'commissionEarned' => $commissionEarned,
+        ]);
+    }
+
+    private function referralDashboard(User $user): View
+    {
+        $levels = ReferralCommissionLevel::query()
+            ->orderBy('level')
+            ->get(['level', 'amount', 'is_active']);
+        $referralQuery = User::query()
+            ->where('referred_by_user_id', $user->id)
+            ->where('role', 'user');
         $creditedLevels = $user->referralCommissions()
             ->where('status', 'credited')
             ->distinct()
             ->pluck('level')
             ->map(fn ($level): int => (int) $level)
             ->all();
+        $totalReferrals = (clone $referralQuery)->count();
+        $qualifiedReferrals = (clone $referralQuery)->whereHas('referralQualification')->count();
+        $pendingReferrals = $totalReferrals - $qualifiedReferrals;
+        $referrals = (clone $referralQuery)
+            ->with('referralQualification:qualified_user_id,qualified_at,qualifying_exchange_request_id,qualifying_withdrawal_id')
+            ->latest('created_at')
+            ->orderByDesc('id')
+            ->paginate(10, ['id', 'customer_id', 'name', 'referred_by_user_id', 'created_at'], 'referral_page')
+            ->withQueryString();
+        $salesSummary = $this->referralSalesSummary($referrals->getCollection());
+        $referralProgress = $this->referralProgress($referrals->getCollection(), $salesSummary);
+        $referralLevels = $this->referralLevelProgress($user, $levels, $creditedLevels);
+        $commissions = $user->referralCommissions()
+            ->with([
+                'qualifiedUser:id,customer_id,name',
+                'qualification:id,cumulative_usdt_equivalent,qualifying_exchange_request_id,qualifying_withdrawal_id',
+                'triggeringExchangeRequest:id,request_reference',
+                'triggeringWithdrawal:id,request_reference',
+                'ledgerEntry:id,user_id,source_type,source_id,entry_type,amount,created_at',
+            ])
+            ->latest('qualified_at')
+            ->orderByDesc('id')
+            ->paginate(10, ['*'], 'commission_page')
+            ->withQueryString();
         $totalEarned = (string) ($user->referralCommissions()
             ->where('status', 'credited')
             ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_earned')
@@ -290,6 +355,7 @@ class AuthController extends Controller
             'pendingReferrals',
             'referrals',
             'referralProgress',
+            'referralLevels',
             'commissions',
             'estimatedLevelOneReward',
         ));
@@ -297,57 +363,110 @@ class AuthController extends Controller
 
     /**
      * @param  Collection<int, User>  $referrals
-     * @return array<int, array{eligible_total: string, remaining: string, qualified: bool}>
+     * @param  array<int, array{total_sell_volume: string, eligible_sell_volume: string, latest_sell_at: string|null}>  $salesSummary
+     * @return array<int, array{eligible_total: string, total_sell_volume: string, latest_sell_at: Carbon|null, masked_customer_id: string, remaining: string, qualified: bool, legacy_withdrawal_qualification: bool}>
      */
-    private function referralProgress(Collection $referrals): array
+    private function referralProgress(Collection $referrals, array $salesSummary): array
     {
         if ($referrals->isEmpty()) {
             return [];
         }
 
-        $totals = $referrals->mapWithKeys(
-            fn (User $referral): array => [(int) $referral->id => '0.00000000']
-        )->all();
-
-        WithdrawalRequest::query()
-            ->whereIn('user_id', array_keys($totals))
-            ->where('status', 'completed')
-            ->whereNotNull('completed_at')
-            ->whereNotNull('usdt_inr_rate_snapshot')
-            ->orderBy('completed_at')
-            ->orderBy('id')
-            ->get(['user_id', 'amount', 'usdt_inr_rate_snapshot'])
-            ->each(function (WithdrawalRequest $withdrawal) use (&$totals): void {
-                $rate = (string) $withdrawal->usdt_inr_rate_snapshot;
-                if (Decimal::compare($rate, '0.00000000', 8) <= 0) {
-                    return;
-                }
-
-                $equivalent = Decimal::divideToScale(
-                    (string) $withdrawal->amount,
-                    $rate,
-                    dividendScale: 2,
-                    divisorScale: 8,
-                    resultScale: 8,
-                );
-                $userId = (int) $withdrawal->user_id;
-                $totals[$userId] = Decimal::add($totals[$userId], $equivalent, 8);
-            });
-
         $threshold = ReferralCommissionService::QUALIFICATION_THRESHOLD_USDT;
 
-        return $referrals->mapWithKeys(function (User $referral) use ($totals, $threshold): array {
-            $total = $totals[(int) $referral->id] ?? '0.00000000';
-            $remaining = Decimal::compare($total, $threshold, 8) >= 0
+        return $referrals->mapWithKeys(function (User $referral) use ($salesSummary, $threshold): array {
+            $summary = $salesSummary[(int) $referral->id] ?? [
+                'total_sell_volume' => '0.00000000',
+                'eligible_sell_volume' => '0.00000000',
+                'latest_sell_at' => null,
+            ];
+            $total = (string) $summary['eligible_sell_volume'];
+            $legacyWithdrawalQualification = $referral->referralQualification?->qualifying_withdrawal_id !== null
+                && $referral->referralQualification?->qualifying_exchange_request_id === null;
+            $remaining = $referral->referralQualification?->qualifying_exchange_request_id !== null
+                || Decimal::compare($total, $threshold, 8) >= 0
                 ? '0.00000000'
                 : Decimal::subtract($threshold, $total, 8);
 
             return [(int) $referral->id => [
                 'eligible_total' => $total,
+                'total_sell_volume' => (string) $summary['total_sell_volume'],
+                'latest_sell_at' => $summary['latest_sell_at'] ? Carbon::parse($summary['latest_sell_at']) : null,
+                'masked_customer_id' => $this->maskCustomerId((string) $referral->customer_id),
                 'remaining' => $remaining,
                 'qualified' => $referral->referralQualification !== null,
+                'legacy_withdrawal_qualification' => $legacyWithdrawalQualification,
             ]];
         })->all();
+    }
+
+    /**
+     * @param  Collection<int, User>  $referrals
+     * @return array<int, array{total_sell_volume: string, eligible_sell_volume: string, latest_sell_at: string|null}>
+     */
+    private function referralSalesSummary(Collection $referrals): array
+    {
+        if ($referrals->isEmpty()) {
+            return [];
+        }
+
+        return ExchangeRequest::query()
+            ->completedSell()
+            ->whereIn('user_id', $referrals->pluck('id')->all())
+            ->groupBy('user_id')
+            ->selectRaw('user_id')
+            ->selectRaw('COALESCE(SUM(usdt_amount), 0) as total_sell_volume')
+            ->selectRaw('COALESCE(SUM(CASE WHEN referral_eligible_at IS NOT NULL THEN usdt_amount ELSE 0 END), 0) as eligible_sell_volume')
+            ->selectRaw('MAX(completed_at) as latest_sell_at')
+            ->get()
+            ->mapWithKeys(fn ($row): array => [(int) $row->user_id => [
+                'total_sell_volume' => (string) $row->total_sell_volume,
+                'eligible_sell_volume' => (string) $row->eligible_sell_volume,
+                'latest_sell_at' => $row->latest_sell_at,
+            ]])
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, ReferralCommissionLevel>  $levels
+     * @param  list<int>  $creditedLevels
+     * @return array<int, array{level: int, amount: string, status: string, member_count: int, qualified_count: int}>
+     */
+    private function referralLevelProgress(User $user, Collection $levels, array $creditedLevels): array
+    {
+        $parentIds = User::query()->select('id')->whereKey($user->id);
+        $result = [];
+        foreach ($levels as $level) {
+            $members = User::query()
+                ->whereIn('referred_by_user_id', $parentIds)
+                ->where('role', 'user');
+            $memberCount = (clone $members)->count();
+            $qualifiedCount = (clone $members)->whereHas('referralQualification')->count();
+            $levelNumber = (int) $level->level;
+            $result[$levelNumber] = [
+                'level' => $levelNumber,
+                'amount' => (string) $level->amount,
+                'status' => (in_array($levelNumber, $creditedLevels, true) || $qualifiedCount > 0)
+                    ? 'qualified'
+                    : ($level->is_active && $memberCount > 0 ? 'unlocked' : 'locked'),
+                'member_count' => $memberCount,
+                'qualified_count' => $qualifiedCount,
+            ];
+            $parentIds = $members->select('id');
+        }
+
+        return $result;
+    }
+
+    private function maskCustomerId(string $customerId): string
+    {
+        if (mb_strlen($customerId) <= 4) {
+            return str_repeat('•', mb_strlen($customerId));
+        }
+
+        return mb_substr($customerId, 0, 2)
+            .str_repeat('•', max(4, mb_strlen($customerId) - 4))
+            .mb_substr($customerId, -2);
     }
 
     public function showChangePassword(Request $request): View

@@ -21,17 +21,13 @@ final class Money
         return '$'.$whole.'.'.$fraction;
     }
 
-    public static function formatUsdt(string $amount, int $precision = 8): string
+    public static function formatUsdt(string $amount): string
     {
-        $precision = min(8, max(6, $precision));
         [$whole, $fraction] = array_pad(explode('.', $amount, 2), 2, '');
         $whole = preg_replace('/\B(?=(\d{3})+(?!\d))/', ',', $whole) ?? $whole;
-        $fraction = substr(str_pad($fraction, $precision, '0'), 0, $precision);
-        while (strlen($fraction) > 6 && str_ends_with($fraction, '0')) {
-            $fraction = substr($fraction, 0, -1);
-        }
+        $fraction = rtrim($fraction, '0');
 
-        return $whole.'.'.$fraction;
+        return $whole.($fraction === '' ? '' : '.'.$fraction);
     }
 
     public static function formatInr(string $amount): string

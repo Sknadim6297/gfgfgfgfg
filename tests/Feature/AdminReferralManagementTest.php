@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\InrLedgerEntry;
+use App\Models\ExchangeRequest;
 use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
@@ -148,6 +149,60 @@ class AdminReferralManagementTest extends TestCase
             ->assertSee('₹1,500.00')
             ->assertSee('₹1,000.00')
             ->assertDontSee('Reversed Beneficiary');
+    }
+
+    public function test_admin_referral_report_searches_sell_transaction_references(): void
+    {
+        $level = ReferralCommissionLevel::query()->where('level', 1)->firstOrFail();
+        $beneficiary = User::factory()->create(['name' => 'Sell Referral Beneficiary']);
+        $qualified = User::factory()->create(['name' => 'Sell Qualified Customer']);
+        $sell = ExchangeRequest::create([
+            'user_id' => $qualified->id,
+            'request_reference' => 'QPMSELLREFERRALSEARCH',
+            'rate_plan_name' => 'Saved rate',
+            'usdt_amount' => '500.00000000',
+            'exchange_rate' => '100.00000000',
+            'inr_amount' => '50000.00',
+            'available_usd_before' => '500.00000000',
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+        $qualification = ReferralQualification::create([
+            'qualified_user_id' => $qualified->id,
+            'qualifying_exchange_request_id' => $sell->id,
+            'cumulative_usdt_equivalent' => '500.00000000',
+            'threshold_usdt' => '500.00000000',
+            'qualified_at' => now(),
+        ]);
+        $commission = ReferralCommission::create([
+            'referral_qualification_id' => $qualification->id,
+            'referral_commission_level_id' => $level->id,
+            'beneficiary_user_id' => $beneficiary->id,
+            'qualified_user_id' => $qualified->id,
+            'level' => 1,
+            'amount' => $level->amount,
+            'configuration_snapshot' => ['level' => 1, 'amount' => (string) $level->amount],
+            'triggering_exchange_request_id' => $sell->id,
+            'status' => 'credited',
+            'qualified_at' => now(),
+            'credited_at' => now(),
+        ]);
+        $ledger = InrLedgerEntry::create([
+            'user_id' => $beneficiary->id,
+            'source_type' => 'referral_commission',
+            'source_id' => $commission->id,
+            'entry_type' => 'credit',
+            'amount' => $level->amount,
+        ]);
+        $commission->forceFill(['ledger_entry_id' => $ledger->id])->save();
+
+        $this->adminSession($this->admin())
+            ->get(route('admin.referrals.commissions', ['search' => $sell->request_reference]))
+            ->assertOk()
+            ->assertSee('Sell Referral Beneficiary')
+            ->assertSee('Sell Qualified Customer')
+            ->assertSee('Source transaction')
+            ->assertSee($sell->request_reference);
     }
 
     public function test_report_validation_and_pagination_are_server_side(): void

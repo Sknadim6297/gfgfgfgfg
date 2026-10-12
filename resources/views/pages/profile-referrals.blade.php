@@ -77,14 +77,14 @@
                     <span class="referral-eyebrow">CONFIGURED REWARDS</span>
                     <div class="referral-levels">
                         @foreach ($levels as $level)
-                            @php($credited = in_array((int) $level->level, $creditedLevels, true))
-                            <article class="referral-level {{ $level->is_active ? 'is-active' : 'is-inactive' }}">
-                                <span class="referral-level-marker" aria-label="{{ $credited ? 'Reward credited' : 'Level '.$level->level }}">
-                                    @if ($credited)<span aria-hidden="true">✓</span>@else{{ $level->level }}@endif
+                            @php($levelProgress = $referralLevels[(int) $level->level])
+                            <article class="referral-level {{ $levelProgress['status'] === 'qualified' ? 'is-active' : ($levelProgress['status'] === 'locked' ? 'is-inactive' : 'is-unlocked') }}">
+                                <span class="referral-level-marker" aria-label="{{ ucfirst($levelProgress['status']) }} level {{ $level->level }}">
+                                    @if ($levelProgress['status'] === 'qualified')<span aria-hidden="true">✓</span>@else{{ $level->level }}@endif
                                 </span>
                                 <strong>Level {{ $level->level }}</strong>
                                 <span class="referral-level-amount">{{ \App\Support\Money::formatInr((string) $level->amount) }}</span>
-                                <span class="referral-level-status">{{ $level->is_active ? 'Active' : 'Inactive' }}</span>
+                                <span class="referral-level-status">{{ ucfirst($levelProgress['status']) }} · {{ $levelProgress['member_count'] }} {{ \Illuminate\Support\Str::plural('member', $levelProgress['member_count']) }}</span>
                             </article>
                         @endforeach
                     </div>
@@ -97,7 +97,7 @@
                     <div>
                         <span class="referral-eyebrow">MEMBER ACTIVITY</span>
                         <h2>Qualification progress</h2>
-                        <p>Only completed withdrawals with a valid saved Base Rate count toward 500 USDT.</p>
+                        <p>Completed USDT sells count toward progress. Only sells completed after referral qualification tracking was enabled can trigger a new commission; earlier sells are shown separately and are not paid retroactively.</p>
                     </div>
                     <span class="referral-threshold">Threshold · 500 USDT</span>
                 </header>
@@ -107,16 +107,24 @@
                         <div class="referral-progress-heading">
                             <div>
                                 <span class="referral-eyebrow">REFERRED MEMBER</span>
-                                <strong>Member {{ $referral->customer_id }}</strong>
-                                <small>Joined {{ $referral->created_at->timezone(config('app.timezone'))->format('M j, Y') }}</small>
+                                <strong>{{ $referral->name }}</strong>
+                                <small>Customer {{ $progress['masked_customer_id'] }}</small>
+                                <small>Level 1 · Joined {{ $referral->created_at->timezone(config('app.timezone'))->format('M j, Y') }}</small>
                             </div>
                             <span class="portal-badge {{ $progress['qualified'] ? 'completed' : 'pending' }}">{{ $progress['qualified'] ? 'Qualified' : 'In progress' }}</span>
                         </div>
                         <div class="referral-progress-values">
-                            <div><span>Completed withdrawals</span><strong>{{ \App\Support\Money::formatUsdt($progress['eligible_total']) }} USDT</strong></div>
+                            <div><span>Completed sell volume</span><strong>{{ \App\Support\Money::formatUsdt($progress['total_sell_volume']) }} USDT</strong></div>
+                            <div><span>Eligible toward qualification</span><strong>{{ \App\Support\Money::formatUsdt($progress['eligible_total']) }} USDT</strong></div>
                             <div><span>{{ $progress['qualified'] ? 'Qualified on' : 'Remaining' }}</span><strong>{{ $progress['qualified'] ? $referral->referralQualification->qualified_at->timezone(config('app.timezone'))->format('M j, Y') : \App\Support\Money::formatUsdt($progress['remaining']).' USDT' }}</strong></div>
+                            <div><span>Latest completed sell</span><strong>{{ $progress['latest_sell_at']?->timezone(config('app.timezone'))->format('M j, Y') ?? '—' }}</strong></div>
                         </div>
-                        <progress class="referral-progress-bar" max="500" value="{{ $progress['eligible_total'] }}" aria-label="Qualification progress for member {{ $referral->customer_id }}">{{ $progress['eligible_total'] }} / 500 USDT</progress>
+                        @if ($progress['legacy_withdrawal_qualification'])
+                            <p class="referral-progress-note">This referral was already qualified under the previous completed-withdrawal rule. Existing commissions are preserved; no historical sells have been applied retroactively.</p>
+                        @else
+                            <progress class="referral-progress-bar" max="500" value="{{ \App\Support\Decimal::compare($progress['eligible_total'], '500.00000000', 8) >= 0 ? '500' : $progress['eligible_total'] }}" aria-label="Qualification progress for {{ $referral->name }}">{{ $progress['eligible_total'] }} / 500 USDT</progress>
+                        @endif
+                        <a class="referral-member-link" href="{{ route('profile.referrals.member', $referral) }}">View sell and commission history <span aria-hidden="true">→</span></a>
                         @if (! $progress['qualified'] && $estimatedLevelOneReward !== null)
                             <p class="referral-progress-note">Estimated reward — not earned or payable until qualification. Potential Level 1 reward: {{ \App\Support\Money::formatInr((string) $estimatedLevelOneReward) }}.</p>
                         @endif
@@ -147,12 +155,12 @@
                         <div class="referral-commission-heading">
                             <div>
                                 <span class="referral-eyebrow">LEVEL {{ $commission->level }} COMMISSION</span>
-                                <strong>Member {{ $commission->qualifiedUser?->customer_id ?? 'reference unavailable' }}</strong>
+                                <strong>{{ $commission->qualifiedUser?->name ?? 'Referral member' }}</strong>
                             </div>
                             <span class="portal-badge {{ $commission->status }}">{{ ucfirst($commission->status) }}</span>
                         </div>
                         <dl class="referral-commission-details">
-                            <div><dt>Date</dt><dd>{{ $commission->qualified_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</dd></div>
+                            <div><dt>Qualification date</dt><dd>{{ $commission->qualified_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</dd></div>
                             <div><dt>Qualifying amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) ($commission->qualification?->cumulative_usdt_equivalent ?? '0')) }} USDT</dd></div>
                             <div><dt>Commission</dt><dd>{{ \App\Support\Money::formatInr((string) $commission->amount) }}</dd></div>
                             <div>
@@ -165,6 +173,7 @@
                                     @endif
                                 </dd>
                             </div>
+                            <div><dt>Transaction reference</dt><dd>{{ $commission->triggeringExchangeRequest?->request_reference ?? $commission->triggeringWithdrawal?->request_reference ?? '—' }}</dd></div>
                             <div><dt>Credited on</dt><dd>{{ $commission->credited_at?->timezone(config('app.timezone'))->format('M j, Y · H:i') ?? 'Not credited' }}</dd></div>
                         </dl>
                     </article>

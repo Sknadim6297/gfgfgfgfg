@@ -57,9 +57,9 @@
             <p>This historical exchange request predates the current Sell reservation workflow. Its existing review workflow remains available below.</p>
             <dl class="admin-detail-list">
                 <div><dt>User</dt><dd>{{ $exchange->user->name }} · {{ $exchange->user->customer_id }} · {{ $exchange->user->email }}</dd></div>
-                <div><dt>USDT amount</dt><dd>{{ $exchange->usdt_amount }}</dd></div>
+                <div><dt>USDT amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) }} USDT</dd></div>
                 <div><dt>Rate</dt><dd>{{ \App\Models\ExchangeRate::formatDecimal($exchange->exchange_rate) }}</dd></div>
-                <div><dt>INR amount</dt><dd>₹{{ $exchange->inr_amount }}</dd></div>
+                <div><dt>INR amount</dt><dd>{{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }}</dd></div>
             </dl>
             @if (in_array($exchange->status, ['pending', 'processing'], true))
                 <form class="admin-form" method="POST" action="{{ route('admin.exchanges.update', $exchange) }}" data-confirm="This legacy status action may finalize the existing exchange ledger workflow." data-confirm-title="Save exchange update?" data-confirm-button="Save update">

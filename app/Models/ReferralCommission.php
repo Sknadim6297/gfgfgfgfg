@@ -19,6 +19,7 @@ class ReferralCommission extends Model
         'amount',
         'configuration_snapshot',
         'triggering_withdrawal_id',
+        'triggering_exchange_request_id',
         'ledger_entry_id',
         'status',
         'qualified_at',
@@ -48,6 +49,7 @@ class ReferralCommission extends Model
                 'amount',
                 'configuration_snapshot',
                 'triggering_withdrawal_id',
+                'triggering_exchange_request_id',
                 'qualified_at',
             ] as $attribute) {
                 if ($commission->isDirty($attribute)) {
@@ -87,6 +89,11 @@ class ReferralCommission extends Model
     public function triggeringWithdrawal(): BelongsTo
     {
         return $this->belongsTo(WithdrawalRequest::class, 'triggering_withdrawal_id');
+    }
+
+    public function triggeringExchangeRequest(): BelongsTo
+    {
+        return $this->belongsTo(ExchangeRequest::class, 'triggering_exchange_request_id');
     }
 
     public function ledgerEntry(): BelongsTo

@@ -38,7 +38,7 @@
     <section class="admin-panel admin-directory">
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">FINANCIAL HISTORY</span><h2>Referral commissions</h2><p>Search and filter qualification records. Ledger entries are immutable and linked to their original reward.</p></div></div>
         <form class="admin-filters" method="GET" action="{{ route('admin.referrals.commissions') }}">
-            <div class="admin-search-field"><label class="visually-hidden" for="referral-search">Search customers, withdrawal or ledger</label><i class="bi bi-search" aria-hidden="true"></i><input class="portal-input" id="referral-search" name="search" value="{{ $filters['search'] ?? '' }}" maxlength="120" placeholder="Customer, withdrawal reference or ledger ID"></div>
+            <div class="admin-search-field"><label class="visually-hidden" for="referral-search">Search customers, transaction reference or ledger</label><i class="bi bi-search" aria-hidden="true"></i><input class="portal-input" id="referral-search" name="search" value="{{ $filters['search'] ?? '' }}" maxlength="120" placeholder="Customer, transaction reference or ledger ID"></div>
             <div class="admin-filter-select"><label class="visually-hidden" for="referral-level">Referral level</label><select class="portal-input" id="referral-level" name="level"><option value="">All levels</option>@foreach ([1, 2, 3] as $level)<option value="{{ $level }}" @selected(($filters['level'] ?? '') === (string) $level)>Level {{ $level }}</option>@endforeach</select><i class="bi bi-chevron-down" aria-hidden="true"></i></div>
             <div class="admin-filter-select"><label class="visually-hidden" for="referral-status">Commission status</label><select class="portal-input" id="referral-status" name="status"><option value="">All statuses</option>@foreach (\App\Models\ReferralCommission::STATUSES as $status)<option value="{{ $status }}" @selected(($filters['status'] ?? '') === $status)>{{ ucfirst($status) }}</option>@endforeach</select><i class="bi bi-chevron-down" aria-hidden="true"></i></div>
             <label class="visually-hidden" for="referral-date-from">Qualified from</label><input class="portal-input" id="referral-date-from" type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}">
@@ -49,7 +49,7 @@
         <div class="admin-table-meta"><span>Showing <strong>{{ $commissions->firstItem() ?? 0 }}–{{ $commissions->lastItem() ?? 0 }}</strong> of <strong>{{ $commissions->total() }}</strong> commissions</span></div>
         <div class="portal-table-wrap admin-table-wrap">
             <table class="portal-table admin-table">
-                <thead><tr><th scope="col">Beneficiary</th><th scope="col">Qualified customer</th><th scope="col">Level</th><th scope="col">Commission</th><th scope="col">Qualified</th><th scope="col">Credited</th><th scope="col">Status</th><th scope="col">INR ledger</th></tr></thead>
+                <thead><tr><th scope="col">Beneficiary</th><th scope="col">Qualified customer</th><th scope="col">Level</th><th scope="col">Commission</th><th scope="col">Qualified</th><th scope="col">Credited</th><th scope="col">Status</th><th scope="col">Source transaction</th><th scope="col">INR ledger</th></tr></thead>
                 <tbody>
                     @forelse ($commissions as $commission)
                         <tr>
@@ -60,10 +60,11 @@
                             <td><time datetime="{{ $commission->qualified_at->toIso8601String() }}">{{ $commission->qualified_at->format('M j, Y · H:i') }}</time></td>
                             <td>@if ($commission->credited_at)<time datetime="{{ $commission->credited_at->toIso8601String() }}">{{ $commission->credited_at->format('M j, Y · H:i') }}</time>@else — @endif</td>
                             <td><span class="portal-badge {{ $commission->status }}"><span class="admin-badge-dot"></span>{{ ucfirst($commission->status) }}</span></td>
+                            <td>{{ $commission->triggeringExchangeRequest?->request_reference ?? $commission->triggeringWithdrawal?->request_reference ?? '—' }}</td>
                             <td>@if ($commission->ledgerEntry)<span class="admin-id">#{{ $commission->ledgerEntry->id }}</span><small>{{ \App\Support\Money::formatInr((string) $commission->ledgerEntry->amount) }} credit</small>@else — @endif</td>
                         </tr>
                     @empty
-                        <tr><td colspan="8"><div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No referral commissions found</strong><p>Commission records matching these filters will appear here.</p></div></td></tr>
+                        <tr><td colspan="9"><div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No referral commissions found</strong><p>Commission records matching these filters will appear here.</p></div></td></tr>
                     @endforelse
                 </tbody>
             </table>

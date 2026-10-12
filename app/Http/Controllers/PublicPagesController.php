@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExchangeRate;
+use App\Support\DemoPlatformActivity;
 use Illuminate\View\View;
 
 class PublicPagesController extends Controller
@@ -15,6 +16,7 @@ class PublicPagesController extends Controller
         return view('pages.index', [
             'baseRate' => $ratePlans->firstWhere('plan_key', 'base'),
             'recordedBalance' => $customer?->role === 'user' ? $customer->balance : null,
+            'demoActivity' => DemoPlatformActivity::forDate(),
         ]);
     }
 

@@ -113,6 +113,8 @@ class AdminReferralController extends Controller
             ->with([
                 'beneficiary:id,name,email,customer_id',
                 'qualifiedUser:id,name,email,customer_id',
+                'triggeringExchangeRequest:id,request_reference',
+                'triggeringWithdrawal:id,request_reference',
                 'ledgerEntry:id,user_id,source_type,source_id,entry_type,amount,created_at',
             ])
             ->when($filters['search'] ?? null, function ($query, string $search): void {
@@ -125,7 +127,8 @@ class AdminReferralController extends Controller
                         });
                     }
                     $query->orWhereHas('ledgerEntry', fn ($ledger) => $ledger->where('id', is_numeric($search) ? (int) $search : -1))
-                        ->orWhereHas('triggeringWithdrawal', fn ($withdrawal) => $withdrawal->where('request_reference', 'like', '%'.$search.'%'));
+                        ->orWhereHas('triggeringWithdrawal', fn ($withdrawal) => $withdrawal->where('request_reference', 'like', '%'.$search.'%'))
+                        ->orWhereHas('triggeringExchangeRequest', fn ($exchange) => $exchange->where('request_reference', 'like', '%'.$search.'%'));
                 });
             })
             ->when($filters['level'] ?? null, fn ($query, string $level) => $query->where('level', (int) $level))

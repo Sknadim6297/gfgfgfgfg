@@ -6,8 +6,12 @@ use App\Models\BalanceLedgerEntry;
 use App\Models\ExchangeRate;
 use App\Models\ExchangeRequest;
 use App\Models\InrLedgerEntry;
+use App\Models\ReferralCommission;
+use App\Models\ReferralCommissionLevel;
+use App\Models\ReferralQualification;
 use App\Models\User;
 use App\Services\SellRequestService;
+use App\Services\ReferralCommissionService;
 use Database\Seeders\ExchangeRateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +59,132 @@ class SellRequestWorkflowTest extends TestCase
         $this->assertSame(1, ExchangeRequest::where('user_id', $customer->id)->count());
     }
 
+    public function test_new_completed_sells_qualify_referral_and_credit_each_configured_level_once(): void
+    {
+        $this->seed(ExchangeRateSeeder::class);
+        $levelOne = User::factory()->create();
+        $levelTwo = User::factory()->create(['referred_by_user_id' => $levelOne->id]);
+        $levelThree = User::factory()->create(['referred_by_user_id' => $levelTwo->id]);
+        $customer = User::factory()->create([
+            'balance' => '1000.00000000',
+            'referred_by_user_id' => $levelThree->id,
+        ]);
+        ReferralCommissionLevel::query()->where('level', 1)->update(['amount' => '1777.77']);
+        ReferralCommissionLevel::query()->where('level', 2)->update(['is_active' => false]);
+        ReferralCommissionLevel::query()->where('level', 3)->update(['amount' => '222.22']);
+
+        $first = $this->submitSell($customer, '250', false);
+        $this->assertSame('completed', $first->status);
+        $this->assertNull($first->referralQualification);
+        $this->assertSame(0, ReferralQualification::query()->count());
+
+        $second = $this->submitSell($customer->fresh(), '250', false);
+        $qualification = ReferralQualification::query()->sole();
+        $this->assertSame($second->id, $qualification->qualifying_exchange_request_id);
+        $this->assertSame('500.00000000', $qualification->cumulative_usdt_equivalent);
+        $this->assertSame([1, 3], ReferralCommission::query()->where('qualified_user_id', $customer->id)->orderBy('level')->pluck('level')->all());
+        $this->assertSame('222.22', $levelOne->fresh()->inr_balance);
+        $this->assertSame('0.00', $levelTwo->fresh()->inr_balance);
+        $this->assertSame('1777.77', $levelThree->fresh()->inr_balance);
+        $this->assertSame('500.00000000', $customer->fresh()->balance);
+        $this->assertSame('50000.00', $customer->fresh()->inr_balance);
+        $this->assertSame(1, BalanceLedgerEntry::where('source_id', $second->id)->where('entry_type', 'debit')->count());
+        $this->assertSame(1, InrLedgerEntry::where('source_type', 'exchange_request')->where('source_id', $second->id)->where('entry_type', 'credit')->count());
+
+        DB::transaction(fn () => app(ReferralCommissionService::class)->processCompletedSell($second->fresh()));
+        $this->assertSame(1, ReferralQualification::query()->where('qualified_user_id', $customer->id)->count());
+        $this->assertSame(2, ReferralCommission::query()->where('qualified_user_id', $customer->id)->count());
+        $this->assertSame('1777.77', ReferralCommission::query()->where('qualified_user_id', $customer->id)->where('level', 1)->sole()->amount);
+        $this->assertSame('222.22', ReferralCommission::query()->where('qualified_user_id', $customer->id)->where('level', 3)->sole()->amount);
+        $this->assertSame('222.22', $levelOne->fresh()->inr_balance);
+
+        $this->actingAs($levelThree, 'web')
+            ->get(route('profile.referrals'))
+            ->assertOk()
+            ->assertSee($second->request_reference)
+            ->assertSee('₹1,777.77');
+        $this->get(route('profile.referrals.member', $customer))
+            ->assertOk()
+            ->assertSee($second->request_reference)
+            ->assertSee('₹1,777.77')
+            ->assertSee('INR ledger #');
+    }
+
+    public function test_previously_completed_unmarked_sells_do_not_count_toward_new_referral_qualification(): void
+    {
+        $this->seed(ExchangeRateSeeder::class);
+        $referrer = User::factory()->create();
+        $customer = User::factory()->create([
+            'balance' => '100.00000000',
+            'referred_by_user_id' => $referrer->id,
+        ]);
+        $historical = ExchangeRequest::create([
+            'user_id' => $customer->id,
+            'request_reference' => 'QPMSELLHISTORICAL',
+            'rate_plan_name' => 'Historical rate',
+            'usdt_amount' => '490.00000000',
+            'exchange_rate' => '100.00000000',
+            'inr_amount' => '49000.00',
+            'available_usd_before' => '490.00000000',
+            'status' => 'completed',
+            'completed_at' => now()->subDay(),
+        ]);
+        BalanceLedgerEntry::create([
+            'user_id' => $customer->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $historical->id,
+            'entry_type' => 'debit',
+            'amount' => '490.00000000',
+        ]);
+        InrLedgerEntry::create([
+            'user_id' => $customer->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $historical->id,
+            'entry_type' => 'credit',
+            'amount' => '49000.00',
+        ]);
+
+        $this->submitSell($customer, '20', false);
+
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
+        $this->assertNull($historical->fresh()->referral_eligible_at);
+    }
+
+    public function test_referral_credit_failure_rolls_back_sell_conversion_and_every_wallet_ledger_entry(): void
+    {
+        $this->seed(ExchangeRateSeeder::class);
+        $referrer = User::factory()->create();
+        $customer = User::factory()->create([
+            'balance' => '500.00000000',
+            'referred_by_user_id' => $referrer->id,
+        ]);
+        DB::unprepared(<<<'SQL'
+CREATE TRIGGER fail_referral_credit BEFORE INSERT ON inr_ledger_entries
+WHEN NEW.source_type = 'referral_commission'
+BEGIN
+    SELECT RAISE(ABORT, 'forced referral ledger failure');
+END
+SQL);
+
+        try {
+            $submissionKey = (string) Str::uuid();
+            $quoteToken = $this->quoteSell($customer, '500', $submissionKey);
+            $response = $this->submitSellWithQuote($submissionKey, '500', $quoteToken);
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_referral_credit');
+        }
+
+        $response->assertServerError();
+        $this->assertDatabaseCount('exchange_requests', 0);
+        $this->assertDatabaseCount('balance_ledger_entries', 0);
+        $this->assertDatabaseCount('inr_ledger_entries', 0);
+        $this->assertSame('500.00000000', $customer->fresh()->balance);
+        $this->assertSame('0.00', $customer->fresh()->inr_balance);
+        $this->assertSame(0, ReferralQualification::query()->count());
+        $this->assertSame(0, ReferralCommission::query()->count());
+    }
+
     public function test_invalid_and_insufficient_sell_requests_create_no_financial_records(): void
     {
         $this->seed(ExchangeRateSeeder::class);
@@ -91,7 +221,8 @@ class SellRequestWorkflowTest extends TestCase
             ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.exchanges.index'))
             ->assertOk()
-            ->assertSee('300.000000')
+            ->assertSee('300')
+            ->assertDontSee('300.000000')
             ->assertSee('class="admin-sell-usdt-unit">USDT</small>', false)
             ->assertSee('₹100')
             ->assertSee('<small>/ USDT</small>', false)
@@ -113,13 +244,13 @@ class SellRequestWorkflowTest extends TestCase
 
         $response->assertOk()
             ->assertSee('All-time totals across every sell request; filters only affect the list below.')
-            ->assertSee('10.000000 USDT')
+            ->assertSee('10 USDT')
             ->assertSee('₹1,000.00 INR · 5 requests')
-            ->assertSee('1.000000 USDT')
+            ->assertSee('1 USDT')
             ->assertSee('₹100.00 INR · 2 requests')
-            ->assertSee('5.000000 USDT')
+            ->assertSee('5 USDT')
             ->assertSee('₹500.00 INR · 2 requests')
-            ->assertSee('4.000000 USDT')
+            ->assertSee('4 USDT')
             ->assertSee('₹400.00 INR · 1 requests')
             ->assertSee('QPMSELL');
     }
@@ -137,7 +268,7 @@ class SellRequestWorkflowTest extends TestCase
             ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.exchanges.index'))
             ->assertOk()
-            ->assertSee('0.000000 USDT')
+            ->assertSee('0 USDT')
             ->assertSee('₹0.00 INR · 0 requests');
     }
 
@@ -235,13 +366,19 @@ class SellRequestWorkflowTest extends TestCase
             ->where('auditable_id', $exchange->id)
             ->where('event', 'SELL_REQUEST_AUTO_COMPLETED')
             ->count());
+        $this->get(route('admin.users.show', $customer))
+            ->assertOk()
+            ->assertSee('5,000 USDT')
+            ->assertSee('₹100 / USDT')
+            ->assertSee('₹500,000.00')
+            ->assertDontSee('5,000.00000000');
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.exchanges.show', $exchange))
             ->assertOk()
             ->assertSee('Sell Request Auto Completed')
             ->assertSee('Customer ID')
             ->assertSee('USDT Amount')
-            ->assertSee('5,000.000000 USDT')
+            ->assertSee('5,000 USDT')
             ->assertSee('Exchange Rate')
             ->assertSee('₹100 / USDT')
             ->assertSee('INR Amount')
@@ -268,6 +405,7 @@ class SellRequestWorkflowTest extends TestCase
         $this->get(route('profile.exchanges'))
             ->assertOk()
             ->assertSee($exchange->request_reference)
+            ->assertSee('5,000 USDT')
             ->assertSee('View Details')
             ->assertDontSee('Invoice');
     }
@@ -423,31 +561,39 @@ SQL);
             ->assertDontSee($exchange->request_reference);
     }
 
-    private function submitSell(User $customer, string $amount): ExchangeRequest
+    private function submitSell(User $customer, string $amount, bool $verifyDuplicate = true): ExchangeRequest
+    {
+        $submissionKey = (string) Str::uuid();
+        $quoteToken = $this->quoteSell($customer, $amount, $submissionKey);
+        $this->submitSellWithQuote($submissionKey, $amount, $quoteToken)->assertRedirect();
+        if ($verifyDuplicate) {
+            $this->submitSellWithQuote($submissionKey, $amount, $quoteToken)->assertRedirect();
+        }
+
+        return ExchangeRequest::query()->where('user_id', $customer->id)->where('submission_key', $submissionKey)->firstOrFail();
+    }
+
+    private function quoteSell(User $customer, string $amount, string $submissionKey): string
     {
         if (! $customer->hasWalletTransactionPin()) {
             $customer->forceFill(['wallet_transaction_password_hash' => Hash::make('1234')])->save();
         }
-        $submissionKey = (string) Str::uuid();
         $quote = $this->actingAs($customer, 'web')->post(route('exchange.requests.quote'), [
             'submission_key' => $submissionKey,
             'amount' => $amount,
         ])->assertOk();
 
-        $this->post(route('exchange.requests.store'), [
-            'submission_key' => $submissionKey,
-            'quote_token' => $this->quoteToken($quote->getContent()),
-            'amount' => $amount,
-            'wallet_transaction_pin' => '1234',
-        ])->assertRedirect();
-        $this->post(route('exchange.requests.store'), [
-            'submission_key' => $submissionKey,
-            'quote_token' => $this->quoteToken($quote->getContent()),
-            'amount' => $amount,
-            'wallet_transaction_pin' => '1234',
-        ])->assertRedirect();
+        return $this->quoteToken($quote->getContent());
+    }
 
-        return ExchangeRequest::query()->where('user_id', $customer->id)->where('submission_key', $submissionKey)->firstOrFail();
+    private function submitSellWithQuote(string $submissionKey, string $amount, string $quoteToken): \Illuminate\Testing\TestResponse
+    {
+        return $this->post(route('exchange.requests.store'), [
+            'submission_key' => $submissionKey,
+            'quote_token' => $quoteToken,
+            'amount' => $amount,
+            'wallet_transaction_pin' => '1234',
+        ]);
     }
 
     private function quoteToken(string $html): string

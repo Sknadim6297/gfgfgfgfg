@@ -70,13 +70,9 @@
                     </nav>
                 @else
                     <div class="profile-content-heading"><span class="profile-content-icon"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><div><h2>Exchange Details</h2><p>Request reference {{ $exchange->request_reference ?: 'EXC-'.$exchange->id }}</p></div></div>
-                    @php
-                        $displayAmount = rtrim(rtrim((string) $exchange->usdt_amount, '0'), '.');
-                        $displayRate = rtrim(rtrim((string) $exchange->exchange_rate, '0'), '.');
-                    @endphp
                     <dl class="profile-detail-list">
-                        <div><dt>USDT Amount</dt><dd>{{ $displayAmount }} USDT</dd></div>
-                        <div><dt>Applied INR Rate</dt><dd>₹{{ $displayRate }} per USDT</dd></div>
+                        <div><dt>USDT Amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) }} USDT</dd></div>
+                        <div><dt>Applied INR Rate</dt><dd>₹{{ \App\Models\ExchangeRate::formatDecimal($exchange->exchange_rate) }} per USDT</dd></div>
                         <div><dt>Recorded INR Amount</dt><dd>{{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }}</dd></div>
                         <div><dt>Status</dt><dd><span class="portal-badge {{ $exchange->status }}">{{ ucfirst($exchange->status) }}</span></dd></div>
                         @if ($exchange->transaction_reference)<div><dt>Verification reference</dt><dd>{{ $exchange->transaction_reference }}</dd></div>@endif
