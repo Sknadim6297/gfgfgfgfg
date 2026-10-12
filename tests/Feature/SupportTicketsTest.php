@@ -180,6 +180,30 @@ class SupportTicketsTest extends TestCase
             ->assertSee('Ticket history');
     }
 
+    public function test_admin_support_summary_counts_all_ticket_statuses_independent_of_filters(): void
+    {
+        $customer = User::factory()->create();
+        $this->ticketFor($customer, ['status' => 'open']);
+        $this->ticketFor($customer, ['status' => 'in_progress']);
+        $this->ticketFor($customer, ['status' => 'resolved']);
+        $closed = $this->ticketFor($customer, ['status' => 'closed']);
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'totp_enabled' => true,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.support-tickets.index', ['status' => 'closed']))
+            ->assertOk()
+            ->assertSee('All-time ticket counts; filters only affect the list below.')
+            ->assertSee('All tickets')
+            ->assertSee('4')
+            ->assertSee('2')
+            ->assertSee('1')
+            ->assertSee($closed->ticket_number);
+    }
+
     public function test_closed_ticket_rejects_customer_replies_and_message_html_is_escaped(): void
     {
         $customer = User::factory()->create();

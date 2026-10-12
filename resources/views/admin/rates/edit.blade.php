@@ -14,6 +14,14 @@
         </button>
     </div>
 
+    <p class="admin-summary-note">All-time plan counts; the filters below only affect the plan list. Rates are INR per USDT, not transaction totals.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time exchange rate plan summary">
+        <article class="admin-stat"><span class="admin-stat-label">All rate plans</span><strong>{{ number_format((int) $summary->total_count) }}</strong><small>Default and custom</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Active</span><strong>{{ number_format((int) ($summary->active_count ?? 0)) }}</strong><small>Available to quote</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Inactive</span><strong>{{ number_format((int) ($summary->inactive_count ?? 0)) }}</strong><small>Not available to quote</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Custom plans</span><strong>{{ number_format((int) ($summary->custom_count ?? 0)) }}</strong><small>{{ number_format((int) ($summary->default_count ?? 0)) }} default plans</small></article>
+    </section>
+
     <section class="admin-panel admin-rate-directory" aria-label="Exchange rate plans">
         <div class="admin-panel-heading">
             <div><span class="admin-eyebrow">USDT / INR</span><h2>Rate plans</h2><p>Plans are listed from the lowest minimum USD amount to the highest.</p></div>

@@ -22,6 +22,20 @@ class AdminWithdrawalController extends Controller
             'status' => ['nullable', Rule::in(WithdrawalRequest::STATUSES)],
         ]);
 
+        $summary = WithdrawalRequest::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_amount')
+            ->selectRaw(
+                'COALESCE(ROUND(SUM(CASE WHEN status IN (?, ?) THEN amount ELSE 0 END), 2), 0) as pending_amount',
+                ['pending', 'processing']
+            )
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as completed_amount', ['completed'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as rejected_amount', ['rejected'])
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as pending_count', ['pending', 'processing'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed_count', ['completed'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_count', ['rejected'])
+            ->first();
+
         $withdrawals = WithdrawalRequest::with('user:id,name,email,customer_id')
             ->when($validated['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
@@ -35,7 +49,10 @@ class AdminWithdrawalController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return view('admin.withdrawals.index', ['withdrawals' => $withdrawals]);
+        return view('admin.withdrawals.index', [
+            'withdrawals' => $withdrawals,
+            'summary' => $summary,
+        ]);
     }
 
     public function show(WithdrawalRequest $withdrawalRequest): View
@@ -58,7 +75,13 @@ class AdminWithdrawalController extends Controller
     ): RedirectResponse {
         $validated = $request->validate([
             'status' => ['required', Rule::in(WithdrawalRequest::STATUSES)],
-            'transaction_reference' => ['nullable', 'string', 'max:150', Rule::unique('withdrawal_requests', 'transaction_reference')->ignore($withdrawalRequest->id)],
+            'transaction_reference' => [
+                'required_if:status,completed',
+                'nullable',
+                'string',
+                'max:150',
+                Rule::unique('withdrawal_requests', 'transaction_reference')->ignore($withdrawalRequest->id),
+            ],
             'admin_notes' => ['nullable', 'string', 'max:5000'],
             'rejection_reason' => ['required_if:status,rejected', 'nullable', 'string', 'min:3', 'max:500'],
         ]);
@@ -76,11 +99,6 @@ class AdminWithdrawalController extends Controller
                 default => [],
             };
             abort_unless(in_array($validated['status'], $allowed, true), 422, 'This withdrawal status transition is not allowed.');
-            abort_if(
-                $validated['status'] === 'completed' && empty($validated['transaction_reference']),
-                422,
-                'A payout reference is required to mark the request completed.'
-            );
 
             $rateSnapshot = null;
             if ($validated['status'] === 'completed') {

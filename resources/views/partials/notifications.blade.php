@@ -6,7 +6,7 @@
         session()->has('status') ? ['type' => 'success', 'message' => (string) session('status')] : (
             session()->has('rate_notice') ? ['type' => 'warning', 'message' => (string) session('rate_notice')] : (
                 session()->has('sell_request_submitted')
-                    ? ['type' => 'success', 'message' => 'Your sell request has been submitted and is awaiting review.']
+                    ? ['type' => 'success', 'message' => 'Your sell request was approved automatically and the INR was credited to your wallet.']
                     : null
             )
         )

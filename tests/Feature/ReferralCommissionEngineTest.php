@@ -107,6 +107,15 @@ class ReferralCommissionEngineTest extends TestCase
         $this->assertSame('1000.00', $levelTwo->fresh()->inr_balance);
         $this->assertSame('500.00', $levelThree->fresh()->inr_balance);
         $this->assertCommissionLedgerConsistency();
+
+        $this->actingAs($levelOne, 'web')
+            ->get(route('profile.referrals'))
+            ->assertOk()
+            ->assertSee('Referral dashboard')
+            ->assertSee('Member '.$customer->customer_id)
+            ->assertSee('500.000000 USDT')
+            ->assertSee('₹1,500.00')
+            ->assertSee('INR ledger #');
     }
 
     public function test_multiple_completed_withdrawals_cumulatively_qualify_at_threshold(): void

@@ -17,6 +17,8 @@ class AdminReferralController extends Controller
 {
     public function settings(): View
     {
+        $commissionSummary = $this->commissionSummary();
+
         return view('admin.referrals.settings', [
             'levels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->orderBy('level')->get(),
             'history' => AuditLog::query()
@@ -32,12 +34,7 @@ class AdminReferralController extends Controller
             'activeLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', true)->count(),
             'inactiveLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', false)->count(),
             'qualifiedReferrals' => ReferralQualification::query()->count(),
-            'totalPaid' => (string) ReferralCommission::query()->where('status', 'credited')->sum('amount'),
-            'levelTotals' => ReferralCommission::query()
-                ->select('level', DB::raw('SUM(amount) as total'))
-                ->where('status', 'credited')
-                ->groupBy('level')
-                ->pluck('total', 'level'),
+            ...$commissionSummary,
         ]);
     }
 
@@ -140,21 +137,41 @@ class AdminReferralController extends Controller
             ->paginate(25)
             ->withQueryString();
 
+        $commissionSummary = $this->commissionSummary();
+
+        return view('admin.referrals.report', [
+            'commissions' => $commissions,
+            'filters' => $filters,
+            ...$commissionSummary,
+            'qualifiedReferrals' => ReferralQualification::query()->count(),
+            'activeLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', true)->count(),
+            'inactiveLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', false)->count(),
+        ]);
+    }
+
+    private function commissionSummary(): array
+    {
+        $statusTotals = ReferralCommission::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_amount')
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as pending_amount', ['pending'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as credited_amount', ['credited'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as reversed_amount', ['reversed'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count', ['pending'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as credited_count', ['credited'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as reversed_count', ['reversed'])
+            ->first();
         $levelTotals = ReferralCommission::query()
             ->select('level', DB::raw('SUM(amount) as total'))
             ->where('status', 'credited')
             ->groupBy('level')
             ->pluck('total', 'level');
 
-        return view('admin.referrals.report', [
-            'commissions' => $commissions,
-            'filters' => $filters,
-            'totalPaid' => (string) ReferralCommission::query()->where('status', 'credited')->sum('amount'),
+        return [
+            'commissionSummary' => $statusTotals,
             'levelTotals' => $levelTotals,
-            'qualifiedReferrals' => ReferralQualification::query()->count(),
-            'activeLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', true)->count(),
-            'inactiveLevels' => ReferralCommissionLevel::query()->whereIn('level', [1, 2, 3])->where('is_active', false)->count(),
-        ]);
+            'totalPaid' => (string) $statusTotals->credited_amount,
+        ];
     }
 
     private function levelSnapshot(ReferralCommissionLevel $level): array

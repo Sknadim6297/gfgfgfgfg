@@ -63,7 +63,7 @@ class AdminReferralManagementTest extends TestCase
         ]);
         $this->get(route('admin.referrals.settings'))
             ->assertOk()
-            ->assertSee('Level 1 updated')
+            ->assertSee('Referral commission amount updated. Previously recorded commissions are unchanged.')
             ->assertSee('₹1,750.25');
     }
 
@@ -131,6 +131,23 @@ class AdminReferralManagementTest extends TestCase
             ->assertSee('#'.$first->ledger_entry_id)
             ->assertDontSee('Beneficiary Beta')
             ->assertSee('₹1,500.00');
+    }
+
+    public function test_referral_amount_summary_uses_all_time_inr_status_totals_even_when_report_is_filtered(): void
+    {
+        $this->commissionFixture('Credited Beneficiary', 'Credited Customer', 1, 'credited');
+        $this->commissionFixture('Pending Beneficiary', 'Pending Customer', 3, 'pending');
+        $this->commissionFixture('Reversed Beneficiary', 'Reversed Customer', 2, 'reversed');
+
+        $this->adminSession($this->admin())
+            ->get(route('admin.referrals.commissions', ['status' => 'credited']))
+            ->assertOk()
+            ->assertSee('All-time global commission amounts; report filters only affect the table below.')
+            ->assertSee('₹3,000.00')
+            ->assertSee('₹500.00')
+            ->assertSee('₹1,500.00')
+            ->assertSee('₹1,000.00')
+            ->assertDontSee('Reversed Beneficiary');
     }
 
     public function test_report_validation_and_pagination_are_server_side(): void

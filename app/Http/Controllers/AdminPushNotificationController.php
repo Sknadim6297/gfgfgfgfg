@@ -16,6 +16,13 @@ class AdminPushNotificationController extends Controller
 {
     public function index(): View
     {
+        $summary = FcmNotificationCampaign::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as in_progress_count', ['queued', 'processing'])
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as completed_count', ['completed', 'completed_with_failures'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count', ['failed'])
+            ->first();
+
         $customers = User::query()
             ->where('role', 'user')
             ->where('account_status', 'active')
@@ -29,7 +36,7 @@ class AdminPushNotificationController extends Controller
             ->latest('id')
             ->paginate(15);
 
-        return view('admin.push-notifications.index', compact('customers', 'campaigns'));
+        return view('admin.push-notifications.index', compact('customers', 'campaigns', 'summary'));
     }
 
     public function store(Request $request): RedirectResponse

@@ -5,6 +5,21 @@
         <div><span class="admin-eyebrow">PAYMENT OPERATIONS</span><h1>INR withdrawal requests</h1><p>Review requests and record payout status. Transfers are not automated.</p></div>
         <span class="admin-record-count"><i class="bi bi-bank" aria-hidden="true"></i> {{ number_format($withdrawals->total()) }} matching requests</span>
     </div>
+    <p class="admin-summary-note">All-time INR totals; filters only affect the list below.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time INR withdrawal amount summary">
+        @foreach ([
+            'total' => ['Total amount · INR', 'total_amount', 'total_count'],
+            'pending' => ['Pending / processing · INR', 'pending_amount', 'pending_count'],
+            'completed' => ['Completed · INR', 'completed_amount', 'completed_count'],
+            'rejected' => ['Rejected · INR', 'rejected_amount', 'rejected_count'],
+        ] as $key => [$label, $amountKey, $countKey])
+            <article class="admin-stat">
+                <span class="admin-stat-label">{{ $label }}</span>
+                <strong>{{ \App\Support\Money::formatInr((string) $summary->{$amountKey}) }}</strong>
+                <small>{{ number_format((int) ($summary->{$countKey} ?? $summary->total_count)) }} requests</small>
+            </article>
+        @endforeach
+    </section>
     <section class="admin-panel admin-directory">
         <form class="admin-filters" method="GET" action="{{ route('admin.withdrawals.index') }}">
             <div class="admin-search-field"><label class="visually-hidden" for="withdrawal-search">Search customer or reference</label><i class="bi bi-search" aria-hidden="true"></i><input class="portal-input" id="withdrawal-search" name="search" value="{{ request('search') }}" maxlength="120" placeholder="Search customer or reference"></div>

@@ -21,15 +21,15 @@
             @include('partials.profile-hero', ['user' => $user])
             <a class="profile-back-link" href="{{ route('exchange.sell') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to Sell USDT</a>
             <section class="profile-content-card sell-request-card">
-                <div class="profile-content-heading"><span class="profile-content-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span><div><h2>Confirm Sell Request</h2><p>Review the sell amount and applicable rate before submitting.</p></div></div>
+                <div class="profile-content-heading"><span class="profile-content-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span><div><h2>Confirm USDT Conversion</h2><p>Review the sell amount and applicable rate before converting your wallet balance.</p></div></div>
                 <div class="sell-confirmation-title">SELL SUMMARY</div>
                 <dl class="sell-confirmation-list">
                     <div><dt>USDT to Sell</dt><dd>{{ \App\Support\Money::formatUsdt($quote['amount']) }} USDT</dd></div>
                     <div><dt>Applied Rate</dt><dd>₹{{ \App\Models\ExchangeRate::formatDecimal($quote['rate']) }} / USDT <small>{{ $quote['rate_plan_name'] }}</small></dd></div>
-                    <div class="sell-confirmation-total"><dt>INR After Approval</dt><dd>{{ \App\Support\Money::formatInr($quote['inr_amount']) }}</dd></div>
-                    <div><dt>Status after submission</dt><dd><span class="portal-badge pending">Pending Review</span></dd></div>
+                    <div class="sell-confirmation-total"><dt>INR on confirmation</dt><dd>{{ \App\Support\Money::formatInr($quote['inr_amount']) }}</dd></div>
+                    <div><dt>Status after submission</dt><dd><span class="portal-badge completed">Completed</span></dd></div>
                 </dl>
-                <p class="sell-accounting-note">INR will be credited to your INR Wallet after admin approval.</p>
+                <p class="sell-accounting-note">Confirming converts your USDT at the displayed rate, deducts the USDT, and credits the INR to your wallet immediately.</p>
                 <form class="sell-confirmation-actions" method="POST" action="{{ route('exchange.requests.store') }}">
                     @csrf
                     <input type="hidden" name="submission_key" value="{{ $submissionKey }}">

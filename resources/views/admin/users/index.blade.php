@@ -3,7 +3,15 @@
 @section('admin-content')
     <div class="admin-page-heading">
         <div><span class="admin-eyebrow">ACCOUNT DIRECTORY</span><h1>User management</h1><p>Search accounts and review account status, bank details, and access.</p></div>
-        <span class="admin-record-count"><i class="bi bi-people-fill" aria-hidden="true"></i> {{ number_format($stats['total']) }} accounts</span>
+        <div>
+            @if (session()->has('admin_impersonation'))
+                <form method="POST" action="{{ route('admin.impersonation.stop') }}">
+                    @csrf
+                    <button class="admin-button admin-button-secondary" type="submit">End impersonation and return to Admin Panel</button>
+                </form>
+            @endif
+            <span class="admin-record-count"><i class="bi bi-people-fill" aria-hidden="true"></i> {{ number_format($stats['total']) }} accounts</span>
+        </div>
     </div>
 
     <section class="admin-stats admin-user-stats" aria-label="User account statistics">
@@ -11,6 +19,11 @@
         <article class="admin-stat"><span class="admin-stat-label">Active</span><strong>{{ number_format($stats['active']) }}</strong></article>
         <article class="admin-stat"><span class="admin-stat-label">Suspended</span><strong>{{ number_format($stats['suspended']) }}</strong></article>
         <article class="admin-stat"><span class="admin-stat-label">Blocked</span><strong>{{ number_format($stats['blocked']) }}</strong></article>
+    </section>
+    <p class="admin-summary-note">All-time totals across customer accounts; directory filters only affect the list below.</p>
+    <section class="admin-stats admin-user-stats" aria-label="Recorded customer wallet balances">
+        <article class="admin-stat"><span class="admin-stat-label">Recorded USD balances</span><strong>{{ \App\Support\Money::formatUsd((string) $balances->usd) }}</strong><small>Customer accounts only</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Recorded INR balances</span><strong>{{ \App\Support\Money::formatInr((string) $balances->inr) }}</strong><small>Customer accounts only</small></article>
     </section>
 
     <section class="admin-panel admin-directory">
@@ -35,7 +48,15 @@
                         @php($bankStatus = $user->bankVerificationStatusForAdminDirectory())
                         <td><span class="portal-badge {{ $bankStatus === 'not_submitted' ? 'inactive' : $bankStatus }}"><span class="admin-badge-dot"></span>{{ str($bankStatus)->replace('_', ' ')->title() }}</span></td>
                         <td><span class="portal-badge {{ $user->account_status }}"><span class="admin-badge-dot"></span>{{ ucfirst($user->account_status) }}</span></td>
-                        <td class="admin-table-action"><a class="admin-icon-button" href="{{ route('admin.users.show', $user) }}" aria-label="View {{ $user->name }} details"><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a></td>
+                        <td class="admin-table-action">
+                            @if ($user->role === 'user' && $user->account_status === 'active')
+                                <form method="POST" action="{{ route('admin.users.impersonate', $user) }}" target="_blank" rel="noopener">
+                                    @csrf
+                                    <button class="admin-button admin-button-secondary" type="submit" aria-label="Login as {{ $user->name }} in a new tab" title="Opens the member dashboard in a new tab. Keep this admin tab open to return.">Login as User</button>
+                                </form>
+                            @endif
+                            <a class="admin-icon-button" href="{{ route('admin.users.show', $user) }}" aria-label="View {{ $user->name }} details"><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
+                        </td>
                     </tr>
                 @empty
                     <tr><td colspan="6"><div class="admin-empty-state"><span><i class="bi bi-search" aria-hidden="true"></i></span><strong>No accounts found</strong><p>Try changing the search term or clearing the filters.</p></div></td></tr>

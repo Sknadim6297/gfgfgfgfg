@@ -6,9 +6,19 @@
         <a class="admin-button admin-button-secondary" href="{{ route('admin.deposit-settings.edit') }}"><i class="bi bi-gear" aria-hidden="true"></i> Deposit settings</a>
     </div>
 
-    <section class="admin-stats admin-user-stats" aria-label="Deposit request statistics">
-        @foreach (['all' => 'All requests', 'pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'] as $key => $label)
-            <article class="admin-stat"><span class="admin-stat-label">{{ $label }}</span><strong>{{ number_format($counts[$key]) }}</strong></article>
+    <p class="admin-summary-note">All-time totals in USD; filters only affect the list below.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time deposit amount summary">
+        @foreach ([
+            'all' => ['Total amount · USD', 'total_amount', 'total_count'],
+            'pending' => ['Pending amount · USD', 'pending_amount', 'pending_count'],
+            'approved' => ['Approved amount · USD', 'approved_amount', 'approved_count'],
+            'rejected' => ['Rejected amount · USD', 'rejected_amount', 'rejected_count'],
+        ] as $key => [$label, $amountKey, $countKey])
+            <article class="admin-stat">
+                <span class="admin-stat-label">{{ $label }}</span>
+                <strong>{{ \App\Support\Money::formatUsd((string) $summary->{$amountKey}) }}</strong>
+                <small>{{ number_format((int) ($summary->{$countKey} ?? $summary->total_count)) }} requests</small>
+            </article>
         @endforeach
     </section>
 

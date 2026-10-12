@@ -2,9 +2,24 @@
 @section('title', 'Quick PayMoney | Sell Requests')
 @section('admin-content')
     <div class="admin-page-heading">
-        <div><span class="admin-eyebrow">OPERATIONS</span><h1>Sell requests</h1><p>Review USDT sell requests and their saved rate and accounting state. Approval credits the customer’s INR Wallet.</p></div>
+        <div><span class="admin-eyebrow">OPERATIONS</span><h1>Sell conversion history</h1><p>View USDT conversions and their confirmed rates and recorded wallet accounting.</p></div>
         <span class="admin-record-count"><i class="bi bi-arrow-left-right" aria-hidden="true"></i> {{ number_format($exchanges->total()) }} matching requests</span>
     </div>
+    <p class="admin-summary-note">All-time totals across every sell request; filters only affect the list below.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time sell request amount summary">
+        @foreach ([
+            'total' => ['Total amount', 'total_usdt', 'total_inr', 'total_count'],
+            'pending' => ['Pending / processing', 'pending_usdt', 'pending_inr', 'pending_count'],
+            'approved' => ['Credited / completed', 'approved_usdt', 'approved_inr', 'approved_count'],
+            'rejected' => ['Rejected', 'rejected_usdt', 'rejected_inr', 'rejected_count'],
+        ] as $key => [$label, $usdtKey, $inrKey, $countKey])
+            <article class="admin-stat">
+                <span class="admin-stat-label">{{ $label }}</span>
+                <strong>{{ \App\Support\Money::formatUsdt((string) $summary->{$usdtKey}) }} USDT</strong>
+                <small>{{ \App\Support\Money::formatInr((string) $summary->{$inrKey}) }} INR · {{ number_format((int) $summary->{$countKey}) }} requests</small>
+            </article>
+        @endforeach
+    </section>
     <section class="admin-panel admin-directory">
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">REQUEST QUEUE</span><h2>All sell requests</h2><p>Search by reference, customer ID, or customer name.</p></div></div>
         <form class="admin-filters" method="GET" action="{{ route('admin.exchanges.index') }}">
@@ -18,7 +33,7 @@
         </form>
         <div class="admin-table-meta"><span>Showing <strong>{{ $exchanges->firstItem() ?? 0 }}–{{ $exchanges->lastItem() ?? 0 }}</strong> of <strong>{{ $exchanges->total() }}</strong> requests</span></div>
         <div class="portal-table-wrap admin-table-wrap"><table class="portal-table admin-table">
-            <thead><tr><th scope="col">Reference</th><th scope="col">Customer</th><th scope="col">USDT</th><th scope="col">Rate</th><th scope="col">INR</th><th scope="col">Status</th><th scope="col">Submitted</th><th scope="col">Reviewed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody>
+            <thead><tr><th scope="col">Reference</th><th scope="col">Customer</th><th scope="col">USDT</th><th scope="col">Rate</th><th scope="col">INR</th><th scope="col">Status</th><th scope="col">Submitted</th>            <th scope="col">Completed / reviewed</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody>
             @forelse ($exchanges as $exchange)
                 <tr>
                     <td><span class="admin-id">{{ $exchange->request_reference ?: 'Legacy request' }}</span></td>
@@ -29,7 +44,9 @@
                     <td><span class="portal-badge {{ $exchange->status }}"><span class="admin-badge-dot"></span>{{ ucfirst($exchange->status) }}</span></td>
                     <td><time datetime="{{ $exchange->created_at->toDateString() }}">{{ $exchange->created_at->format('M j, Y') }}</time></td>
                     <td>
-                        @if ($exchange->approved_at)
+                        @if ($exchange->completed_at)
+                            <time datetime="{{ $exchange->completed_at->toDateString() }}">{{ $exchange->completed_at->format('M j, Y') }}</time>
+                        @elseif ($exchange->approved_at)
                             <time datetime="{{ $exchange->approved_at->toDateString() }}">{{ $exchange->approved_at->format('M j, Y') }}</time>
                         @elseif ($exchange->rejected_at)
                             <time datetime="{{ $exchange->rejected_at->toDateString() }}">{{ $exchange->rejected_at->format('M j, Y') }}</time>

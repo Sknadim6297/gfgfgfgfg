@@ -8,6 +8,21 @@
         <a class="admin-button admin-button-secondary" href="{{ route('admin.referrals.commissions') }}"><i class="bi bi-journal-text" aria-hidden="true"></i> Commission report</a>
     </div>
 
+    <p class="admin-summary-note">All-time commission amounts across every referral qualification.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time referral commission amounts in INR">
+        @foreach ([
+            'total' => ['Total commissions · INR', 'total_amount', 'total_count'],
+            'pending' => ['Pending · INR', 'pending_amount', 'pending_count'],
+            'credited' => ['Credited · INR', 'credited_amount', 'credited_count'],
+            'reversed' => ['Reversed · INR', 'reversed_amount', 'reversed_count'],
+        ] as $key => [$label, $amountKey, $countKey])
+            <article class="admin-stat">
+                <span class="admin-stat-label">{{ $label }}</span>
+                <strong>{{ \App\Support\Money::formatInr((string) $commissionSummary->{$amountKey}) }}</strong>
+                <small>{{ number_format((int) ($commissionSummary->{$countKey} ?? $commissionSummary->total_count)) }} commissions</small>
+            </article>
+        @endforeach
+    </section>
     <section class="admin-stats admin-user-stats" aria-label="Referral commission summary">
         <article class="admin-stat"><span class="admin-stat-label">Total commissions paid</span><strong>{{ \App\Support\Money::formatInr($totalPaid) }}</strong></article>
         <article class="admin-stat"><span class="admin-stat-label">Qualified referrals</span><strong>{{ number_format($qualifiedReferrals) }}</strong></article>

@@ -21,6 +21,17 @@ class AdminDepositController extends Controller
             'status' => ['nullable', Rule::in(Deposit::STATUSES)],
         ]);
 
+        $summary = Deposit::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_amount')
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as pending_amount', ['pending'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as approved_amount', ['approved'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 2), 0) as rejected_amount', ['rejected'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count', ['pending'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as approved_count', ['approved'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_count', ['rejected'])
+            ->first();
+
         $deposits = Deposit::query()
             ->with('user:id,name,email')
             ->when($validated['search'] ?? null, function ($query, string $search): void {
@@ -37,12 +48,7 @@ class AdminDepositController extends Controller
 
         return view('admin.deposits.index', [
             'deposits' => $deposits,
-            'counts' => [
-                'all' => Deposit::count(),
-                'pending' => Deposit::where('status', 'pending')->count(),
-                'approved' => Deposit::where('status', 'approved')->count(),
-                'rejected' => Deposit::where('status', 'rejected')->count(),
-            ],
+            'summary' => $summary,
         ]);
     }
 

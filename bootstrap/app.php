@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
 use App\Http\Middleware\EnsureAdminTwoFactor;
+use App\Http\Middleware\EnsureImpersonationIsReadOnly;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -24,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.session' => EnsureAdminSessionFresh::class,
             'admin.role' => EnsureAdminRole::class,
             'admin.2fa' => EnsureAdminTwoFactor::class,
+            'impersonation.readonly' => EnsureImpersonationIsReadOnly::class,
         ]);
         $middleware->redirectGuestsTo(
             fn (Request $request): string => $request->is('admin', 'admin/*')

@@ -21,7 +21,7 @@
             <a class="profile-back-link" href="{{ route('profile.exchanges') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to Exchange History</a>
             <section class="profile-content-card" id="sell-request-details">
                 @if ($exchange->available_usd_before !== null)
-                    <div class="profile-content-heading"><span class="profile-content-icon"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><div><h2>SELL REQUEST</h2><p>USDT to INR Wallet conversion</p></div><span class="portal-badge {{ in_array($exchange->status, ['approved', 'completed'], true) ? 'approved' : $exchange->status }}">{{ ucfirst($exchange->status) }}</span></div>
+                    <div class="profile-content-heading"><span class="profile-content-icon"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><div><h2>SELL CONVERSION</h2><p>USDT to INR Wallet conversion</p></div><span class="portal-badge {{ $exchange->status }}">{{ ucfirst($exchange->status) }}</span></div>
                     <div class="sell-receive-summary">
                         <span>YOU WILL RECEIVE</span>
                         <strong>{{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }}</strong>
@@ -37,22 +37,26 @@
                     <dl class="profile-detail-list">
                         <div><dt>Reference ID</dt><dd class="exchange-reference-copy"><span>{{ $exchange->request_reference }}</span><button type="button" class="profile-copy-button" data-copy-value="{{ $exchange->request_reference }}" aria-label="Copy reference ID"><i class="bi bi-copy" aria-hidden="true"></i><span class="profile-copy-feedback" data-copy-feedback aria-live="polite"></span></button></dd></div>
                         <div><dt>Submitted</dt><dd><time datetime="{{ $exchange->created_at->toIso8601String() }}">{{ $exchange->created_at->format('M j, Y · H:i') }}</time></dd></div>
-                        @if ($exchange->approved_at)
+                        @if ($exchange->completed_at)
+                            <div><dt>Completed</dt><dd><time datetime="{{ $exchange->completed_at->toIso8601String() }}">{{ $exchange->completed_at->format('M j, Y · H:i') }}</time></dd></div>
+                        @elseif ($exchange->approved_at)
                             <div><dt>Approved</dt><dd><time datetime="{{ $exchange->approved_at->toIso8601String() }}">{{ $exchange->approved_at->format('M j, Y · H:i') }}</time></dd></div>
                         @endif
-                        <div><dt>Status</dt><dd><span class="portal-badge {{ in_array($exchange->status, ['approved', 'completed'], true) ? 'approved' : $exchange->status }}">{{ ucfirst($exchange->status) }}</span></dd></div>
+                        <div><dt>Status</dt><dd><span class="portal-badge {{ $exchange->status }}">{{ ucfirst($exchange->status) }}</span></dd></div>
                         @if ($exchange->status === 'rejected' && $exchange->rejection_reason)
                             <div><dt>Reason</dt><dd>{{ $exchange->rejection_reason }}</dd></div>
                         @endif
                     </dl>
-                    @if ($exchange->status === 'approved')
+                    @if ($exchange->status === 'completed')
+                        <p class="sell-accounting-note">Your USDT conversion is complete. {{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }} was credited to your INR Wallet at the confirmed rate.</p>
+                    @elseif ($exchange->status === 'approved')
                         <p class="sell-accounting-note">Your sell request has been approved. {{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }} was credited to your INR Wallet.</p>
                     @elseif (in_array($exchange->status, ['pending', 'processing'], true))
                         <aside class="sell-pending-note" role="status">
                             <span class="sell-pending-note-icon" aria-hidden="true"><i class="bi bi-hourglass-split"></i></span>
                             <div class="sell-pending-note-copy">
-                                <strong>Your sell request is awaiting admin approval</strong>
-                                <p>After approval, <b>{{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }}</b> will be credited to your INR Wallet.</p>
+                                <strong>Your sell request is awaiting settlement</strong>
+                                <p>Approval does not mean payment settlement is complete.</p>
                             </div>
                         </aside>
                     @elseif ($exchange->status === 'rejected')

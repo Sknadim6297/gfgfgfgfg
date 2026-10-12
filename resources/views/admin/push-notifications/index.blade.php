@@ -12,6 +12,14 @@
         <span class="admin-record-count"><i class="bi bi-bell" aria-hidden="true"></i> {{ $customers->count() }} subscribed customers</span>
     </div>
 
+    <p class="admin-summary-note">All-time campaign counts; the campaign history pagination does not affect these totals.</p>
+    <section class="admin-stats admin-user-stats" aria-label="All-time push campaign summary">
+        <article class="admin-stat"><span class="admin-stat-label">Total campaigns</span><strong>{{ number_format((int) $summary->total_count) }}</strong><small>All recorded campaigns</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Queued / processing</span><strong>{{ number_format((int) ($summary->in_progress_count ?? 0)) }}</strong><small>Awaiting or undergoing delivery</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Completed</span><strong>{{ number_format((int) ($summary->completed_count ?? 0)) }}</strong><small>Includes completed with failures</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Failed</span><strong>{{ number_format((int) ($summary->failed_count ?? 0)) }}</strong><small>Campaign processing failed</small></article>
+    </section>
+
     <section class="admin-panel" aria-labelledby="push-notification-form-title">
         <div class="admin-panel-heading">
             <div><span class="admin-eyebrow">NEW CAMPAIGN</span><h2 id="push-notification-form-title">Compose notification</h2><p>Delivery is queued and processed by background workers.</p></div>

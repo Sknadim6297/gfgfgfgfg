@@ -225,30 +225,7 @@ class AuthController extends Controller
         $user = $request->user('web');
         abort_unless($user?->role === 'user', 403);
 
-        $levels = ReferralCommissionLevel::query()
-            ->whereIn('level', [1, 2, 3])
-            ->orderBy('level')
-            ->get(['level', 'amount', 'is_active']);
-        $creditedLevels = $user->referralCommissions()
-            ->where('status', 'credited')
-            ->distinct()
-            ->pluck('level')
-            ->map(fn ($level): int => (int) $level)
-            ->all();
-        $totalEarned = '0.00';
-
-        $user->referralCommissions()
-            ->where('status', 'credited')
-            ->orderBy('id')
-            ->select(['id', 'amount'])
-            ->chunkById(500, function (Collection $commissions) use (&$totalEarned): void {
-                $commissions->each(function (ReferralCommission $commission) use (&$totalEarned): void {
-                    $amount = (string) $commission->amount;
-                    $totalEarned = Decimal::add($totalEarned, $amount, 2);
-                });
-            });
-
-        return view('pages.profile-referrals', compact('user', 'levels', 'creditedLevels', 'totalEarned'));
+        return $this->referralDashboard($user);
     }
 
     public function referralHistory(Request $request): View
@@ -256,27 +233,61 @@ class AuthController extends Controller
         $user = $request->user('web');
         abort_unless($user?->role === 'user', 403);
 
-        $referrals = $user->referrals()
-            ->where('role', 'user')
-            ->with('referralQualification')
+        return $this->referralDashboard($user);
+    }
+
+    private function referralDashboard(User $user): View
+    {
+        $levels = ReferralCommissionLevel::query()
+            ->whereIn('level', [1, 2, 3])
+            ->orderBy('level')
+            ->get(['level', 'amount', 'is_active']);
+        $referralQuery = User::query()
+            ->where('referred_by_user_id', $user->id)
+            ->where('role', 'user');
+        $totalReferrals = (clone $referralQuery)->count();
+        $qualifiedReferrals = (clone $referralQuery)->whereHas('referralQualification')->count();
+        $pendingReferrals = $totalReferrals - $qualifiedReferrals;
+        $referrals = (clone $referralQuery)
+            ->with('referralQualification:qualified_user_id,qualified_at')
             ->latest('created_at')
             ->orderByDesc('id')
             ->paginate(10, ['id', 'customer_id', 'referred_by_user_id', 'created_at'], 'referral_page')
             ->withQueryString();
         $referralProgress = $this->referralProgress($referrals->getCollection());
         $commissions = $user->referralCommissions()
-            ->with(['qualifiedUser:id,customer_id'])
+            ->with([
+                'qualifiedUser:id,customer_id',
+                'qualification:id,cumulative_usdt_equivalent',
+                'ledgerEntry:id,user_id,source_type,source_id,entry_type,amount,created_at',
+            ])
             ->latest('qualified_at')
             ->orderByDesc('id')
             ->paginate(10, ['*'], 'commission_page')
             ->withQueryString();
+        $creditedLevels = $user->referralCommissions()
+            ->where('status', 'credited')
+            ->distinct()
+            ->pluck('level')
+            ->map(fn ($level): int => (int) $level)
+            ->all();
+        $totalEarned = (string) ($user->referralCommissions()
+            ->where('status', 'credited')
+            ->selectRaw('COALESCE(ROUND(SUM(amount), 2), 0) as total_earned')
+            ->value('total_earned') ?? '0.00');
         $estimatedLevelOneReward = ReferralCommissionLevel::query()
             ->where('level', 1)
             ->where('is_active', true)
             ->value('amount');
 
-        return view('pages.profile-referral-history', compact(
+        return view('pages.profile-referrals', compact(
             'user',
+            'levels',
+            'creditedLevels',
+            'totalEarned',
+            'totalReferrals',
+            'qualifiedReferrals',
+            'pendingReferrals',
             'referrals',
             'referralProgress',
             'commissions',

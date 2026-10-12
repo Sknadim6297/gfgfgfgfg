@@ -32,12 +32,19 @@
                     @csrf @method('PUT')
                     <label for="status">Next status</label>
                     <select class="portal-input" id="status" name="status" required>
-                        @if ($withdrawal->status === 'pending')<option value="processing">Processing</option><option value="rejected">Rejected (refund balance)</option>@else<option value="completed">Completed</option><option value="rejected">Rejected (refund balance)</option>@endif
+                        @if ($withdrawal->status === 'pending')
+                            <option value="processing" @selected(old('status') === 'processing')>Processing</option>
+                            <option value="rejected" @selected(old('status') === 'rejected')>Rejected (refund balance)</option>
+                        @else
+                            <option value="completed" @selected(old('status', 'completed') === 'completed')>Completed</option>
+                            <option value="rejected" @selected(old('status') === 'rejected')>Rejected (refund balance)</option>
+                        @endif
                     </select>
                     @error('status')<span class="admin-field-error">{{ $message }}</span>@enderror
                     <label for="transaction_reference">External payout reference <span>(required for completion)</span></label>
-                    <input class="portal-input" id="transaction_reference" name="transaction_reference" value="{{ old('transaction_reference', $withdrawal->transaction_reference) }}" maxlength="150">
-                    @error('transaction_reference')<span class="admin-field-error">{{ $message }}</span>@enderror
+                    <input class="portal-input" id="transaction_reference" name="transaction_reference" value="{{ old('transaction_reference', $withdrawal->transaction_reference) }}" maxlength="150" aria-describedby="transaction-reference-help transaction-reference-error">
+                    <small id="transaction-reference-help">Enter the bank, cash, or payment-provider reference after the payout has actually been made.</small>
+                    @error('transaction_reference')<span class="admin-field-error" id="transaction-reference-error">{{ $message }}</span>@enderror
                     <label for="admin_notes">Admin notes</label>
                     <textarea class="portal-input" id="admin_notes" name="admin_notes" rows="4" maxlength="5000">{{ old('admin_notes', $withdrawal->admin_notes) }}</textarea>
                     @error('admin_notes')<span class="admin-field-error">{{ $message }}</span>@enderror
@@ -67,4 +74,22 @@
             @empty<div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No audit history</strong></div>@endforelse
         </div>
     </section>
+    @if (in_array($withdrawal->status, ['pending', 'processing'], true))
+        <script>
+            (() => {
+                const status = document.getElementById('status');
+                const reference = document.getElementById('transaction_reference');
+                if (!status || !reference) return;
+
+                const syncReferenceRequirement = () => {
+                    const required = status.value === 'completed';
+                    reference.required = required;
+                    reference.setAttribute('aria-required', String(required));
+                };
+
+                status.addEventListener('change', syncReferenceRequirement);
+                syncReferenceRequirement();
+            })();
+        </script>
+    @endif
 @endsection

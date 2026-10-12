@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -34,8 +35,15 @@ class AdminUserController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        $balances = User::query()
+            ->where('role', 'user')
+            ->selectRaw('COALESCE(ROUND(SUM(balance), 8), 0) as usd')
+            ->selectRaw('COALESCE(ROUND(SUM(inr_balance), 2), 0) as inr')
+            ->first();
+
         return view('admin.users.index', [
             'users' => $users,
+            'balances' => $balances,
             'stats' => [
                 'total' => User::count(),
                 'active' => User::where('account_status', 'active')->count(),
@@ -53,6 +61,59 @@ class AdminUserController extends Controller
             'exchanges' => $user->exchangeRequests()->latest()->paginate(10),
             'activity' => AuditLog::with('actor')->where('subject_user_id', $user->id)->latest()->limit(30)->get(),
         ]);
+    }
+
+    public function impersonate(Request $request, User $user): RedirectResponse
+    {
+        abort_unless($user->role === 'user' && $user->account_status === 'active', 404);
+        abort_if($request->session()->has('admin_impersonation'), 409, 'An impersonation session is already active.');
+        abort_if(Auth::guard('web')->check(), 409, 'A member session is already active.');
+
+        $admin = $request->user('admin');
+
+        AuditLog::create([
+            'actor_user_id' => $admin->id,
+            'subject_user_id' => $user->id,
+            'event' => 'admin.user_impersonation_started',
+            'metadata' => [],
+            'ip_address' => $request->ip(),
+        ]);
+
+        Auth::guard('web')->login($user);
+        $request->session()->put('admin_impersonation', [
+            'admin_id' => $admin->id,
+            'user_id' => $user->id,
+        ]);
+        $request->session()->regenerate();
+
+        return redirect()->route('home');
+    }
+
+    public function stopImpersonating(Request $request): RedirectResponse
+    {
+        $impersonation = $request->session()->get('admin_impersonation');
+        $admin = $request->user('admin');
+
+        abort_unless(
+            is_array($impersonation)
+            && (int) ($impersonation['admin_id'] ?? 0) === $admin->id
+            && (int) ($impersonation['user_id'] ?? 0) === (int) Auth::guard('web')->id(),
+            404,
+        );
+
+        AuditLog::create([
+            'actor_user_id' => $admin->id,
+            'subject_user_id' => (int) $impersonation['user_id'],
+            'event' => 'admin.user_impersonation_ended',
+            'metadata' => [],
+            'ip_address' => $request->ip(),
+        ]);
+
+        Auth::guard('web')->logout();
+        $request->session()->forget('admin_impersonation');
+        $request->session()->regenerate();
+
+        return redirect()->route('admin.users.index');
     }
 
     public function update(Request $request, User $user): RedirectResponse

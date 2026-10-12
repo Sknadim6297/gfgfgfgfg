@@ -270,6 +270,41 @@ class ExchangeRateManagementTest extends TestCase
         $this->patch(route('admin.rates.plans.status', $plan))->assertRedirect(route('admin.login'));
     }
 
+    public function test_rate_plan_summary_is_global_when_plan_list_is_filtered(): void
+    {
+        $this->seed(ExchangeRateSeeder::class);
+        $base = ExchangeRate::query()->where('plan_key', 'base')->firstOrFail();
+        $base->forceFill(['is_active' => false])->save();
+        ExchangeRate::query()->create([
+            'pair' => 'USDT_INR',
+            'plan_key' => 'custom-test',
+            'name' => 'Custom Test Rate',
+            'rate' => '123.45000000',
+            'minimum_amount' => '30000.00000000',
+            'maximum_amount' => null,
+            'label' => null,
+            'description' => null,
+            'icon' => 'bi-stars',
+            'is_active' => false,
+            'is_default' => false,
+        ]);
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.rates.edit', ['status' => 'inactive']))
+            ->assertOk()
+            ->assertSee('All-time plan counts; the filters below only affect the plan list.')
+            ->assertSee('All rate plans')
+            ->assertSee('4')
+            ->assertSee('Active')
+            ->assertSee('2')
+            ->assertSee('Inactive')
+            ->assertSee('Custom plans')
+            ->assertSee('3 default plans')
+            ->assertSee('Custom Test Rate');
+    }
+
     public function test_active_rate_slab_ranges_cannot_overlap_or_be_activated_when_conflicting(): void
     {
         $admin = $this->admin();

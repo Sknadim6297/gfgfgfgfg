@@ -2,7 +2,7 @@
 @section('title', 'Quick PayMoney | Sell Request Details')
 @section('admin-content')
     <div class="admin-page-heading">
-        <div><span class="admin-eyebrow">OPERATIONS / REQUEST DETAILS</span><h1>Sell request <span class="admin-title-id">{{ $exchange->request_reference }}</span></h1><p>Approval finalizes the recorded USD debit and credits the INR Wallet.</p></div>
+        <div><span class="admin-eyebrow">OPERATIONS / TRANSACTION HISTORY</span><h1>Sell conversion <span class="admin-title-id">{{ $exchange->request_reference }}</span></h1><p>View the confirmed rate, conversion status, and recorded wallet entries.</p></div>
         <a class="admin-button admin-button-secondary" href="{{ route('admin.exchanges.index') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to requests</a>
     </div>
     @if ($exchange->available_usd_before !== null)
@@ -29,15 +29,11 @@
                     <div><dt>Available before request</dt><dd>{{ \App\Support\Money::formatUsd((string) $exchange->available_usd_before) }}</dd></div>
                     <div><dt>Reserved USDT</dt><dd>{{ \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) }}</dd></div>
                     <div><dt>Current available USD</dt><dd>{{ \App\Support\Money::formatUsd($availableBalance) }}</dd></div>
-                    <div><dt>USD finalization</dt><dd>{{ $exchange->status === 'approved' ? 'Debited from recorded balance' : ($exchange->status === 'rejected' ? 'Reservation released' : 'Held while pending') }}</dd></div>
-                    <div><dt>INR accounting</dt><dd>{{ $exchange->status === 'approved' ? 'Credited to recorded INR balance' : 'Not credited' }}</dd></div>
+                    <div><dt>USDT finalization</dt><dd>{{ in_array($exchange->status, ['approved', 'completed'], true) ? 'Debited from recorded balance' : ($exchange->status === 'rejected' ? 'Reservation released' : 'Held while pending') }}</dd></div>
+                    <div><dt>INR accounting</dt><dd>{{ in_array($exchange->status, ['approved', 'completed'], true) ? 'Credited to recorded INR balance' : 'Not credited' }}</dd></div>
                 </dl>
                 @if ($exchange->status === 'pending')
-                    <div class="admin-panel-heading admin-section-gap"><div><span class="admin-eyebrow">ADMIN REVIEW</span><h2>Decision</h2><p>Approve to finalize the ledger conversion, or reject with a customer-safe reason.</p></div></div>
-                    <form class="admin-form" method="POST" action="{{ route('admin.exchanges.approve', $exchange) }}" data-confirm="Approve Sell Request? Customer: {{ $exchange->user->customer_id }} · USDT: {{ \App\Support\Money::formatUsdt((string) $exchange->usdt_amount) }} · Rate: ₹{{ \App\Models\ExchangeRate::formatDecimal($exchange->exchange_rate) }} · INR: {{ \App\Support\Money::formatInr((string) $exchange->inr_amount) }} will be credited to the INR Wallet." data-confirm-title="Approve sell request?" data-confirm-button="Confirm approve">
-                        @csrf
-                        <button class="admin-button" type="submit"><i class="bi bi-check2" aria-hidden="true"></i> Approve</button>
-                    </form>
+                    <div class="admin-panel-heading admin-section-gap"><div><span class="admin-eyebrow">LEGACY REVIEW</span><h2>Pending request</h2><p>This request predates automatic approval. It may be rejected to release its reserved USD.</p></div></div>
                     <form class="admin-form admin-section-gap" method="POST" action="{{ route('admin.exchanges.reject', $exchange) }}">
                         @csrf
                         <label for="reason">Rejection reason <span>(required)</span></label>
@@ -45,8 +41,10 @@
                         @error('reason')<span class="admin-field-error">{{ $message }}</span>@enderror
                         <button class="admin-button admin-button-secondary" type="submit"><i class="bi bi-x-circle" aria-hidden="true"></i> Reject Request</button>
                     </form>
+                @elseif ($exchange->status === 'completed')
+                    <div class="admin-inline-notice"><i class="bi bi-check-circle" aria-hidden="true"></i><p>Conversion completed{{ $exchange->completed_at ? ' on '.$exchange->completed_at->format('M j, Y · H:i') : '' }}. The confirmed USDT amount was debited and the INR amount was credited to the customer wallet.</p></div>
                 @elseif ($exchange->status === 'approved')
-                    <div class="admin-inline-notice"><i class="bi bi-check-circle" aria-hidden="true"></i><p>Approved {{ $exchange->approved_at?->format('M j, Y · H:i') }} by {{ $exchange->approver?->name ?? 'an administrator' }}. INR was credited to the customer’s INR Wallet.</p></div>
+                    <div class="admin-inline-notice"><i class="bi bi-check-circle" aria-hidden="true"></i><p>Approved {{ $exchange->approved_at?->format('M j, Y · H:i') }}{{ $exchange->approver ? ' by '.$exchange->approver->name : ' automatically' }}. INR was credited to the customer’s INR Wallet.</p></div>
                 @else
                     <div class="admin-inline-notice"><i class="bi bi-lock" aria-hidden="true"></i><p>This request is {{ $exchange->status }} and cannot be changed.</p></div>
                     @if ($exchange->rejection_reason)<p><strong>Rejection reason:</strong> {{ $exchange->rejection_reason }}</p>@endif

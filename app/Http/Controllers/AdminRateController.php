@@ -35,8 +35,16 @@ class AdminRateController extends Controller
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
             'type' => ['nullable', Rule::in(['default', 'custom'])],
         ]);
+        $summary = ExchangeRate::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END) as active_count', [true])
+            ->selectRaw('SUM(CASE WHEN is_active = ? THEN 1 ELSE 0 END) as inactive_count', [false])
+            ->selectRaw('SUM(CASE WHEN is_default = ? THEN 1 ELSE 0 END) as default_count', [true])
+            ->selectRaw('SUM(CASE WHEN is_default = ? THEN 1 ELSE 0 END) as custom_count', [false])
+            ->first();
 
         return view('admin.rates.edit', [
+            'summary' => $summary,
             'plans' => ExchangeRate::query()
                 ->when($filters['search'] ?? null, function ($query, string $search): void {
                     $query->where(function ($query) use ($search): void {

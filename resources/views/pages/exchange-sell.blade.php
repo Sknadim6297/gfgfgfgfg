@@ -41,7 +41,7 @@
 
                     <button class="sell-submit-button" type="submit"><i class="bi bi-arrow-right-circle" aria-hidden="true"></i> Sell USDT</button>
                 </form>
-                <p class="sell-accounting-note">Your available amount is based on recorded USD balance after pending Sell reservations. INR will be credited to your INR Wallet after admin approval.</p>
+                <p class="sell-accounting-note">Your available amount is based on your recorded USD balance. Review and confirm the displayed rate to convert USDT directly to your INR Wallet.</p>
             </section>
         </main>
         @include('partials.bottom-nav', ['active' => 'exchange', 'variant' => 'standard'])

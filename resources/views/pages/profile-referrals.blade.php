@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Quick PayMoney | My Referrals')
+@section('title', 'Quick PayMoney | Referral Dashboard')
 
 @section('font')
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -14,58 +14,170 @@
 @endsection
 
 @section('content')
+    @php($referralLink = route('register', ['ref' => $user->referral_code]))
     <div class="main-wrapper">
         @include('partials.home-header')
         <main class="content-area profile-dashboard profile-subpage referral-dashboard">
             <section class="profile-content-card referral-dashboard-card">
                 <header class="referral-dashboard-heading">
                     <div>
-                        <h1>My Referrals</h1>
-                        <p>Invite friends. Earn rewards as they qualify.</p>
-                    </div>
-                    <div class="referral-earned">
-                        <span>Total Earned</span>
-                        <strong>{{ \App\Support\Money::formatInr($totalEarned) }}</strong>
+                        <span class="referral-eyebrow">QUICK PAYMONEY REWARDS</span>
+                        <h1>Referral dashboard</h1>
+                        <p>Track your invitations, qualification progress, and credited rewards.</p>
                     </div>
                 </header>
 
-                <ol class="referral-levels" aria-label="Referral reward levels">
-                    @foreach ($levels as $level)
-                        @php($credited = in_array((int) $level->level, $creditedLevels, true))
-                        <li class="referral-level {{ $level->is_active ? 'is-active' : 'is-inactive' }}">
-                            <span class="referral-level-marker" aria-label="{{ $credited ? 'Reward credited' : 'Level '.$level->level }}">
-                                @if ($credited)
-                                    <span aria-hidden="true">✓</span>
-                                @else
-                                    {{ $level->level }}
-                                @endif
-                            </span>
-                            <strong>Level {{ $level->level }}</strong>
-                            <span class="referral-level-amount">{{ \App\Support\Money::formatInr((string) $level->amount) }}</span>
-                            <span class="referral-level-status">{{ $level->is_active ? 'Active' : 'Inactive' }}</span>
-                        </li>
-                    @endforeach
-                </ol>
+                <section class="referral-overview" aria-label="Referral overview">
+                    <article class="referral-metric">
+                        <span>Total referrals</span>
+                        <strong>{{ number_format($totalReferrals) }}</strong>
+                        <small>Registered with your referral code</small>
+                    </article>
+                    <article class="referral-metric">
+                        <span>Qualified</span>
+                        <strong>{{ number_format($qualifiedReferrals) }}</strong>
+                        <small>Reached the 500 USDT threshold</small>
+                    </article>
+                    <article class="referral-metric">
+                        <span>Pending qualification</span>
+                        <strong>{{ number_format($pendingReferrals) }}</strong>
+                        <small>Still progressing toward qualification</small>
+                    </article>
+                    <article class="referral-metric referral-metric-earned">
+                        <span>Total commission earned</span>
+                        <strong>{{ \App\Support\Money::formatInr($totalEarned) }}</strong>
+                        <small>Credited to your INR wallet</small>
+                    </article>
+                </section>
 
-                <div class="referral-details">
-                    <div class="referral-detail">
-                        <span class="referral-detail-label">My Referral Code</span>
-                        <strong class="referral-code-value">{{ $user->referral_code }}</strong>
-                    </div>
-                    <div class="referral-detail">
-                        <label class="referral-detail-label" for="referral-link">Referral Link</label>
-                        <div class="referral-link-field">
-                            <input class="profile-form-control" id="referral-link" value="{{ route('register', ['ref' => $user->referral_code]) }}" readonly>
-                            <button class="referral-copy-button" type="button" data-copy-value="{{ route('register', ['ref' => $user->referral_code]) }}">
-                                <i class="bi bi-copy" aria-hidden="true"></i>
-                                <span>Copy Link</span>
-                                <span data-copy-feedback aria-live="polite"></span>
-                            </button>
+                <section class="referral-link-panel" aria-labelledby="referral-link-title">
+                    <div class="referral-section-heading">
+                        <div>
+                            <span class="referral-eyebrow">INVITE A FRIEND</span>
+                            <h2 id="referral-link-title">Your referral link</h2>
+                            <p>New members must register using this link for the referral to be attributed.</p>
                         </div>
+                        <span class="referral-code-pill">Code {{ $user->referral_code }}</span>
                     </div>
-                </div>
+                    <div class="referral-link-field">
+                        <input class="profile-form-control" id="referral-link" value="{{ $referralLink }}" readonly aria-label="Your referral link">
+                        <button class="referral-copy-button" type="button" data-copy-value="{{ $referralLink }}">
+                            <i class="bi bi-copy" aria-hidden="true"></i>
+                            <span>Copy link</span>
+                            <span data-copy-feedback aria-live="polite"></span>
+                        </button>
+                        <a class="referral-share-button" href="https://wa.me/?text={{ urlencode('Join me on Quick PayMoney: '.$referralLink) }}" target="_blank" rel="noopener noreferrer">
+                            <i class="bi bi-whatsapp" aria-hidden="true"></i>
+                            <span>Share</span>
+                        </a>
+                    </div>
+                </section>
 
-                <a class="referral-history-link" href="{{ route('profile.referrals.history') }}">View Referral History</a>
+                <section class="referral-rewards" aria-label="Configured referral rewards">
+                    <span class="referral-eyebrow">CONFIGURED REWARDS</span>
+                    <div class="referral-levels">
+                        @foreach ($levels as $level)
+                            @php($credited = in_array((int) $level->level, $creditedLevels, true))
+                            <article class="referral-level {{ $level->is_active ? 'is-active' : 'is-inactive' }}">
+                                <span class="referral-level-marker" aria-label="{{ $credited ? 'Reward credited' : 'Level '.$level->level }}">
+                                    @if ($credited)<span aria-hidden="true">✓</span>@else{{ $level->level }}@endif
+                                </span>
+                                <strong>Level {{ $level->level }}</strong>
+                                <span class="referral-level-amount">{{ \App\Support\Money::formatInr((string) $level->amount) }}</span>
+                                <span class="referral-level-status">{{ $level->is_active ? 'Active' : 'Inactive' }}</span>
+                            </article>
+                        @endforeach
+                    </div>
+                    <p>Rewards are configured by Quick PayMoney and are credited only after the referred member qualifies.</p>
+                </section>
+            </section>
+
+            <section class="profile-content-card referral-history-panel" id="qualification-progress">
+                <header class="referral-section-heading">
+                    <div>
+                        <span class="referral-eyebrow">MEMBER ACTIVITY</span>
+                        <h2>Qualification progress</h2>
+                        <p>Only completed withdrawals with a valid saved Base Rate count toward 500 USDT.</p>
+                    </div>
+                    <span class="referral-threshold">Threshold · 500 USDT</span>
+                </header>
+                @forelse ($referrals as $referral)
+                    @php($progress = $referralProgress[$referral->id])
+                    <article class="referral-progress-card">
+                        <div class="referral-progress-heading">
+                            <div>
+                                <span class="referral-eyebrow">REFERRED MEMBER</span>
+                                <strong>Member {{ $referral->customer_id }}</strong>
+                                <small>Joined {{ $referral->created_at->timezone(config('app.timezone'))->format('M j, Y') }}</small>
+                            </div>
+                            <span class="portal-badge {{ $progress['qualified'] ? 'completed' : 'pending' }}">{{ $progress['qualified'] ? 'Qualified' : 'In progress' }}</span>
+                        </div>
+                        <div class="referral-progress-values">
+                            <div><span>Completed withdrawals</span><strong>{{ \App\Support\Money::formatUsdt($progress['eligible_total']) }} USDT</strong></div>
+                            <div><span>{{ $progress['qualified'] ? 'Qualified on' : 'Remaining' }}</span><strong>{{ $progress['qualified'] ? $referral->referralQualification->qualified_at->timezone(config('app.timezone'))->format('M j, Y') : \App\Support\Money::formatUsdt($progress['remaining']).' USDT' }}</strong></div>
+                        </div>
+                        <progress class="referral-progress-bar" max="500" value="{{ $progress['eligible_total'] }}" aria-label="Qualification progress for member {{ $referral->customer_id }}">{{ $progress['eligible_total'] }} / 500 USDT</progress>
+                        @if (! $progress['qualified'] && $estimatedLevelOneReward !== null)
+                            <p class="referral-progress-note">Estimated reward — not earned or payable until qualification. Potential Level 1 reward: {{ \App\Support\Money::formatInr((string) $estimatedLevelOneReward) }}.</p>
+                        @endif
+                    </article>
+                @empty
+                    <div class="referral-empty-state">
+                        <span class="referral-empty-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
+                        <strong>No attributed referrals yet</strong>
+                        <p>Only registrations completed with your referral link or code appear here. Copy or share your link above to invite a member.</p>
+                        <button class="referral-empty-action" type="button" data-copy-value="{{ $referralLink }}">Copy referral link</button>
+                    </div>
+                @endforelse
+                @if ($referrals->hasPages())
+                    <div class="wallet-pagination">{{ $referrals->links() }}</div>
+                @endif
+            </section>
+
+            <section class="profile-content-card referral-history-panel" id="commission-history">
+                <header class="referral-section-heading">
+                    <div>
+                        <span class="referral-eyebrow">WALLET CREDITS</span>
+                        <h2>Commission history</h2>
+                        <p>Commission amounts and wallet ledger references recorded for your referrals.</p>
+                    </div>
+                </header>
+                @forelse ($commissions as $commission)
+                    <article class="referral-commission-card">
+                        <div class="referral-commission-heading">
+                            <div>
+                                <span class="referral-eyebrow">LEVEL {{ $commission->level }} COMMISSION</span>
+                                <strong>Member {{ $commission->qualifiedUser?->customer_id ?? 'reference unavailable' }}</strong>
+                            </div>
+                            <span class="portal-badge {{ $commission->status }}">{{ ucfirst($commission->status) }}</span>
+                        </div>
+                        <dl class="referral-commission-details">
+                            <div><dt>Date</dt><dd>{{ $commission->qualified_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</dd></div>
+                            <div><dt>Qualifying amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) ($commission->qualification?->cumulative_usdt_equivalent ?? '0')) }} USDT</dd></div>
+                            <div><dt>Commission</dt><dd>{{ \App\Support\Money::formatInr((string) $commission->amount) }}</dd></div>
+                            <div>
+                                <dt>Credit details</dt>
+                                <dd>
+                                    @if ($commission->ledger_entry_id)
+                                        INR ledger #{{ $commission->ledger_entry_id }}
+                                    @else
+                                        Not credited to wallet
+                                    @endif
+                                </dd>
+                            </div>
+                            <div><dt>Credited on</dt><dd>{{ $commission->credited_at?->timezone(config('app.timezone'))->format('M j, Y · H:i') ?? 'Not credited' }}</dd></div>
+                        </dl>
+                    </article>
+                @empty
+                    <div class="referral-empty-state referral-empty-state-compact">
+                        <span class="referral-empty-icon"><i class="bi bi-journal-text" aria-hidden="true"></i></span>
+                        <strong>No commission credits recorded</strong>
+                        <p>Commission history appears here when an eligible referral qualifies and a configured reward is credited.</p>
+                    </div>
+                @endforelse
+                @if ($commissions->hasPages())
+                    <div class="wallet-pagination">{{ $commissions->links() }}</div>
+                @endif
             </section>
         </main>
         @include('partials.bottom-nav', ['active' => 'profile', 'variant' => 'standard'])

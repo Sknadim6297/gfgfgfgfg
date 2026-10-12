@@ -16,6 +16,14 @@
         <article class="admin-stat"><span class="admin-stat-icon"><i class="bi bi-x-circle" aria-hidden="true"></i></span><span class="admin-stat-label">Rejected requests</span><strong>{{ number_format($metrics['failed_transactions']) }}</strong><small>Declined in workflow</small></article>
     </section>
 
+    <p class="admin-summary-note">All-time recorded amounts. USD, USDT, and INR are separate measures and are not combined.</p>
+    <section class="admin-stats" aria-label="All-time financial totals">
+        <article class="admin-stat"><span class="admin-stat-label">Sell requests</span><strong>{{ \App\Support\Money::formatUsdt((string) $financialTotals['sell']->usdt) }} USDT</strong><small>{{ \App\Support\Money::formatInr((string) $financialTotals['sell']->inr) }} INR at saved request rates</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Recorded customer wallet balances</span><strong>{{ \App\Support\Money::formatUsd((string) $customerBalances->usd_balance) }}</strong><small>{{ \App\Support\Money::formatInr((string) $customerBalances->inr_balance) }} INR · separate wallet balance</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Deposits · USD</span><strong>{{ \App\Support\Money::formatUsd((string) $financialTotals['deposits']->usd) }}</strong><small>All deposit requests, every status</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Withdrawals · INR</span><strong>{{ \App\Support\Money::formatInr((string) $financialTotals['withdrawals']->inr) }}</strong><small>All withdrawal requests, every status</small></article>
+    </section>
+
     <section class="admin-panel">
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">LATEST EVENTS</span><h2>Recent audit activity</h2><p>Administrative actions and recorded account events.</p></div><i class="bi bi-clock-history admin-panel-heading-icon" aria-hidden="true"></i></div>
         <div class="admin-activity-list">

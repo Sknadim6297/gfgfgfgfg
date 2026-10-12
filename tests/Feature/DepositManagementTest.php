@@ -272,6 +272,40 @@ class DepositManagementTest extends TestCase
         BalanceLedgerEntry::firstOrFail()->update(['amount' => '1.00']);
     }
 
+    public function test_admin_deposit_summary_uses_all_time_usd_amounts_independent_of_list_filters(): void
+    {
+        $customer = User::factory()->create();
+        $this->makeDeposit($customer, '10.10', 'SUM-PENDING-001');
+        $this->makeDeposit($customer, '20.20', 'SUM-APPROVED-01')->forceFill(['status' => 'approved'])->save();
+        $this->makeDeposit($customer, '30.30', 'SUM-REJECTED-01')->forceFill(['status' => 'rejected'])->save();
+        $this->makeDeposit($customer, '40.40', 'SUM-PENDING-002');
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.deposits.index', ['status' => 'rejected']))
+            ->assertOk()
+            ->assertSee('All-time totals in USD; filters only affect the list below.')
+            ->assertSee('$101.00')
+            ->assertSee('$50.50')
+            ->assertSee('$20.20')
+            ->assertSee('$30.30')
+            ->assertSee('4 requests')
+            ->assertSee('2 requests')
+            ->assertSee('SUM-REJECTED-01')
+            ->assertDontSee('SUM-PENDING-001');
+    }
+
+    public function test_empty_deposit_summary_displays_zero_amounts_and_counts(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.deposits.index'))
+            ->assertOk()
+            ->assertSee('$0.00')
+            ->assertSee('0 requests');
+    }
+
     public function test_admin_deposit_audit_history_is_human_readable_escaped_and_preserves_metadata(): void
     {
         $customer = User::factory()->create(['name' => '<img src=x onerror=alert(1)>']);

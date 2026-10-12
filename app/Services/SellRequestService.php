@@ -151,123 +151,108 @@ class SellRequestService
                 'ip_address' => $ipAddress,
             ]);
 
-            DB::afterCommit(fn () => $user->notify(new ExchangeStatusUpdated($exchange)));
+            $this->completeConversion($exchange, $user, $ipAddress);
 
-            return $exchange;
+            return $exchange->refresh();
         });
     }
 
-    public function approve(ExchangeRequest $request, User $admin, ?string $ipAddress): ExchangeRequest
+    private function completeConversion(ExchangeRequest $request, User $customer, ?string $ipAddress): void
     {
-        return DB::transaction(function () use ($request, $admin, $ipAddress): ExchangeRequest {
-            $exchange = ExchangeRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
-            abort_unless($exchange->available_usd_before !== null, 422, 'This legacy exchange request cannot use sell-request approval.');
-            abort_unless($exchange->status === 'pending', 409, 'Only pending sell requests can be approved.');
+        $exchange = ExchangeRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
+        $user = User::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
+        abort_unless($exchange->available_usd_before !== null, 422, 'This request is not a sell request.');
+        abort_unless($exchange->status === 'pending', 409, 'Only pending sell requests can be approved.');
+        abort_unless(
+            BalanceLedgerEntry::query()
+                ->where('source_type', 'exchange_request')
+                ->where('source_id', $exchange->id)
+                ->where('user_id', $user->id)
+                ->where('entry_type', 'hold')
+                ->where('amount', $exchange->usdt_amount)
+                ->exists(),
+            409,
+            'The USD reservation for this sell request is missing or inconsistent.'
+        );
+        abort_unless(
+            ! BalanceLedgerEntry::query()
+                ->where('source_type', 'exchange_request')
+                ->where('source_id', $exchange->id)
+                ->whereIn('entry_type', ['capture', 'release', 'debit'])
+                ->exists(),
+            409,
+            'The USD reservation was already finalized.'
+        );
+        abort_if(
+            Decimal::compare((string) $user->balance, (string) $exchange->usdt_amount, 8) < 0,
+            409,
+            'The recorded USD balance is lower than the reserved sell amount.'
+        );
+        abort_if(
+            InrLedgerEntry::query()
+                ->where('source_type', 'exchange_request')
+                ->where('source_id', $exchange->id)
+                ->where('entry_type', 'credit')
+                ->exists(),
+            409,
+            'This sell request has already credited the customer INR balance.'
+        );
 
-            $user = User::query()->whereKey($exchange->user_id)->lockForUpdate()->firstOrFail();
-            abort_unless(
-                BalanceLedgerEntry::query()
-                    ->where('source_type', 'exchange_request')
-                    ->where('source_id', $exchange->id)
-                    ->where('user_id', $user->id)
-                    ->where('entry_type', 'hold')
-                    ->where('amount', $exchange->usdt_amount)
-                    ->exists(),
-                409,
-                'The USD reservation for this sell request is missing or inconsistent.'
-            );
-            abort_unless(
-                ! BalanceLedgerEntry::query()
-                    ->where('source_type', 'exchange_request')
-                    ->where('source_id', $exchange->id)
-                    ->whereIn('entry_type', ['capture', 'release', 'debit'])
-                    ->exists(),
-                409,
-                'The USD reservation was already finalized.'
-            );
-            abort_unless(
-                ! BalanceLedgerEntry::query()
-                    ->where('source_type', 'exchange_request')
-                    ->where('source_id', $exchange->id)
-                    ->where('entry_type', 'debit')
-                    ->exists(),
-                409,
-                'This sell request has already debited the customer USD balance.'
-            );
-            abort_if(
-                Decimal::compare((string) $user->balance, (string) $exchange->usdt_amount, 8) < 0,
-                409,
-                'The recorded USD balance is lower than the reserved sell amount.'
-            );
+        BalanceLedgerEntry::create([
+            'user_id' => $user->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $exchange->id,
+            'actor_user_id' => null,
+            'entry_type' => 'capture',
+            'amount' => $exchange->usdt_amount,
+        ]);
+        BalanceLedgerEntry::create([
+            'user_id' => $user->id,
+            'source_type' => 'exchange_request',
+            'source_id' => $exchange->id,
+            'actor_user_id' => null,
+            'entry_type' => 'debit',
+            'amount' => $exchange->usdt_amount,
+        ]);
+        $user->forceFill([
+            'balance' => Decimal::subtract((string) $user->balance, (string) $exchange->usdt_amount, 8),
+        ])->save();
 
-            BalanceLedgerEntry::create([
-                'user_id' => $user->id,
-                'source_type' => 'exchange_request',
-                'source_id' => $exchange->id,
-                'actor_user_id' => $admin->id,
-                'entry_type' => 'capture',
-                'amount' => $exchange->usdt_amount,
-            ]);
-            BalanceLedgerEntry::create([
-                'user_id' => $user->id,
-                'source_type' => 'exchange_request',
-                'source_id' => $exchange->id,
-                'actor_user_id' => $admin->id,
-                'entry_type' => 'debit',
-                'amount' => $exchange->usdt_amount,
-            ]);
-            $user->forceFill([
-                'balance' => Decimal::subtract((string) $user->balance, (string) $exchange->usdt_amount, 8),
-            ])->save();
+        InrLedgerEntry::create([
+            'user_id' => $user->id,
+            'actor_user_id' => null,
+            'source_type' => 'exchange_request',
+            'source_id' => $exchange->id,
+            'entry_type' => 'credit',
+            'amount' => $exchange->inr_amount,
+        ]);
+        $user->forceFill([
+            'inr_balance' => Decimal::add((string) $user->inr_balance, (string) $exchange->inr_amount, 2),
+        ])->save();
 
-            abort_unless(
-                ! InrLedgerEntry::query()
-                    ->where('source_type', 'exchange_request')
-                    ->where('source_id', $exchange->id)
-                    ->where('entry_type', 'credit')
-                    ->exists(),
-                409,
-                'This sell request has already credited the customer INR balance.'
-            );
-            InrLedgerEntry::create([
-                'user_id' => $user->id,
-                'actor_user_id' => $admin->id,
-                'source_type' => 'exchange_request',
-                'source_id' => $exchange->id,
-                'entry_type' => 'credit',
-                'amount' => $exchange->inr_amount,
-            ]);
-            $user->forceFill([
-                'inr_balance' => Decimal::add((string) $user->inr_balance, (string) $exchange->inr_amount, 2),
-            ])->save();
+        $exchange->forceFill([
+            'status' => 'completed',
+            'completed_at' => now(),
+        ])->save();
 
-            $exchange->forceFill([
-                'status' => 'approved',
-                'approved_at' => now(),
-                'approved_by_user_id' => $admin->id,
-            ])->save();
+        AuditLog::create([
+            'actor_user_id' => null,
+            'subject_user_id' => $user->id,
+            'event' => 'SELL_REQUEST_AUTO_COMPLETED',
+            'auditable_type' => ExchangeRequest::class,
+            'auditable_id' => $exchange->id,
+            'metadata' => [
+                'reference' => $exchange->request_reference,
+                'customer_id' => $user->customer_id,
+                'usdt_amount' => $exchange->usdt_amount,
+                'rate' => $exchange->exchange_rate,
+                'rate_plan' => $exchange->rate_plan_key,
+                'inr_amount' => $exchange->inr_amount,
+            ],
+            'ip_address' => $ipAddress,
+        ]);
 
-            AuditLog::create([
-                'actor_user_id' => $admin->id,
-                'subject_user_id' => $user->id,
-                'event' => 'SELL_REQUEST_APPROVED',
-                'auditable_type' => ExchangeRequest::class,
-                'auditable_id' => $exchange->id,
-                'metadata' => [
-                    'reference' => $exchange->request_reference,
-                    'customer_id' => $user->customer_id,
-                    'usdt_amount' => $exchange->usdt_amount,
-                    'rate' => $exchange->exchange_rate,
-                    'rate_plan' => $exchange->rate_plan_key,
-                    'inr_amount' => $exchange->inr_amount,
-                ],
-                'ip_address' => $ipAddress,
-            ]);
-
-            DB::afterCommit(fn () => $user->notify(new ExchangeStatusUpdated($exchange)));
-
-            return $exchange;
-        });
+        DB::afterCommit(fn () => $user->notify(new ExchangeStatusUpdated($exchange)));
     }
 
     public function reject(ExchangeRequest $request, User $admin, string $reason, ?string $ipAddress): ExchangeRequest

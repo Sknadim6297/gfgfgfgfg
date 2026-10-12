@@ -22,6 +22,7 @@ class ExchangeRequest extends Model
         'inr_amount',
         'available_usd_before',
         'status',
+        'completed_at',
         'approved_at',
         'approved_by_user_id',
         'rejected_at',
@@ -38,6 +39,7 @@ class ExchangeRequest extends Model
             'exchange_rate' => 'decimal:8',
             'inr_amount' => 'decimal:2',
             'available_usd_before' => 'decimal:8',
+            'completed_at' => 'datetime',
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
         ];

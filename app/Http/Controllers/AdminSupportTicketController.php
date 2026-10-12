@@ -21,6 +21,12 @@ class AdminSupportTicketController extends Controller
             'category' => ['nullable', Rule::in(SupportTicket::CATEGORIES)],
             'priority' => ['nullable', Rule::in(SupportTicket::PRIORITIES)],
         ]);
+        $summary = SupportTicket::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as active_count', ['open', 'in_progress'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as resolved_count', ['resolved'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as closed_count', ['closed'])
+            ->first();
         $tickets = SupportTicket::query()
             ->with('user:id,name,email,customer_id')
             ->when($validated['search'] ?? null, function ($query, string $search): void {
@@ -44,6 +50,7 @@ class AdminSupportTicketController extends Controller
         return view('admin.support.index', [
             'tickets' => $tickets,
             'categories' => SupportTicket::CATEGORIES,
+            'summary' => $summary,
         ]);
     }
 

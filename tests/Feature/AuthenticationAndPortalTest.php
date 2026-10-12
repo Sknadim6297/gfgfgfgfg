@@ -142,6 +142,11 @@ class AuthenticationAndPortalTest extends TestCase
     public function test_registration_associates_a_valid_customer_referrer_and_rejects_non_customer_codes(): void
     {
         $referrer = User::factory()->create();
+        $this->get(route('register', ['ref' => $referrer->referral_code]))
+            ->assertOk()
+            ->assertSee('name="referral_code"', false)
+            ->assertSee('value="'.$referrer->referral_code.'"', false);
+
         $response = $this->post(route('register.store'), [
             'name' => 'Referred Customer',
             'email' => 'referred@example.test',
@@ -1249,6 +1254,37 @@ class AuthenticationAndPortalTest extends TestCase
         $this->assertDatabaseHas('exchange_requests', ['id' => $exchange->id, 'status' => 'completed']);
         $this->assertSame('0.00000000', $user->fresh()->balance);
         $this->assertSame('2250.00', $user->fresh()->inr_balance);
+    }
+
+    public function test_admin_financial_and_user_summaries_keep_wallet_currencies_separate_and_unfiltered(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'account_status' => 'active',
+            'totp_enabled' => true,
+            'balance' => '999.00000000',
+            'inr_balance' => '999.00',
+        ]);
+        User::factory()->create(['balance' => '1.12345678', 'inr_balance' => '2.34']);
+        User::factory()->create(['balance' => '2.00000000', 'inr_balance' => '3.66']);
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
+
+        $this->get(route('admin.users.index', ['status' => 'suspended']))
+            ->assertOk()
+            ->assertSee('All-time totals across customer accounts; directory filters only affect the list below.')
+            ->assertSee('$3.12')
+            ->assertSee('₹6.00')
+            ->assertDontSee('$1,002.12');
+
+        $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('All-time recorded amounts. USD, USDT, and INR are separate measures and are not combined.')
+            ->assertSee('0.000000 USDT')
+            ->assertSee('₹0.00 INR at saved request rates')
+            ->assertSee('$0.00')
+            ->assertSee('₹0.00')
+            ->assertSee('$3.12')
+            ->assertSee('₹6.00');
     }
 
     public function test_every_admin_management_page_uses_the_branded_admin_shell(): void

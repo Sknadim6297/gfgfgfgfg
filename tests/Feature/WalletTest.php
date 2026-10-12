@@ -81,7 +81,7 @@ class WalletTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'admin.exchange_status_updated']);
     }
 
-    public function test_customer_sell_request_keeps_usd_pending_and_saves_rate_plan_snapshot(): void
+    public function test_customer_sell_request_completes_conversion_and_saves_rate_plan_snapshot(): void
     {
         $this->seed(ExchangeRateSeeder::class);
         $customer = User::factory()->create(['balance' => '15000.00']);
@@ -104,12 +104,25 @@ class WalletTest extends TestCase
         ])->assertRedirect();
 
         $exchange = ExchangeRequest::query()->where('user_id', $customer->id)->firstOrFail();
-        $this->assertSame('pending', $exchange->status);
+        $this->assertSame('completed', $exchange->status);
+        $this->assertNotNull($exchange->completed_at);
         $this->assertSame('Prime Rate', $exchange->rate_plan_name);
         $this->assertSame(0, Decimal::compare((string) $exchange->exchange_rate, '115.00000000', 8));
         $this->assertSame(0, Decimal::compare((string) $exchange->inr_amount, '1725000.00', 2));
-        $this->assertSame('15000.00000000', $customer->fresh()->balance);
-        $this->assertSame('0.00', $customer->fresh()->inr_balance);
+        $this->assertSame('0.00000000', $customer->fresh()->balance);
+        $this->assertSame('1725000.00', $customer->fresh()->inr_balance);
+        $this->assertDatabaseHas('balance_ledger_entries', [
+            'source_type' => 'exchange_request',
+            'source_id' => $exchange->id,
+            'entry_type' => 'debit',
+            'amount' => '15000.00000000',
+        ]);
+        $this->assertDatabaseHas('inr_ledger_entries', [
+            'source_type' => 'exchange_request',
+            'source_id' => $exchange->id,
+            'entry_type' => 'credit',
+            'amount' => '1725000.00',
+        ]);
 
         ExchangeRate::where('plan_key', 'prime')->update(['rate' => '1.00000000']);
         $this->assertSame(0, Decimal::compare((string) $exchange->fresh()->exchange_rate, '115.00000000', 8));
@@ -202,11 +215,19 @@ class WalletTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
-        $this->put(route('admin.withdrawals.update', $withdrawal), [
-            'status' => 'completed',
-            'transaction_reference' => '',
-            'admin_notes' => '',
-        ])->assertUnprocessable();
+        $this->from(route('admin.withdrawals.show', $withdrawal))
+            ->put(route('admin.withdrawals.update', $withdrawal), [
+                'status' => 'completed',
+                'transaction_reference' => '',
+                'admin_notes' => '',
+            ])->assertRedirect(route('admin.withdrawals.show', $withdrawal))
+            ->assertSessionHasErrors('transaction_reference');
+        $this->get(route('admin.withdrawals.show', $withdrawal))
+            ->assertOk()
+            ->assertSee('Enter the bank, cash, or payment-provider reference after the payout has actually been made.')
+            ->assertSee('The transaction reference field is required when status is completed.');
+        $this->assertSame('pending', $withdrawal->fresh()->status);
+        $this->assertNull($withdrawal->fresh()->completed_at);
 
         $this->put(route('admin.withdrawals.update', $withdrawal), [
             'status' => 'rejected',
@@ -433,6 +454,39 @@ class WalletTest extends TestCase
             ->assertOk()
             ->assertSee('1234567890')
             ->assertSee('Available INR after reservation');
+    }
+
+    public function test_admin_withdrawal_summary_aggregates_all_time_inr_by_status_independent_of_filters(): void
+    {
+        $customer = $this->customerWithBank();
+        $this->withdrawal($customer, '10.10', 'WDR-SUM-PENDING')->forceFill(['status' => 'pending'])->save();
+        $this->withdrawal($customer, '20.20', 'WDR-SUM-PROCESSING')->forceFill(['status' => 'processing'])->save();
+        $this->withdrawal($customer, '35.35', 'WDR-SUM-COMPLETED')->forceFill(['status' => 'completed'])->save();
+        $this->withdrawal($customer, '40.40', 'WDR-SUM-REJECTED')->forceFill(['status' => 'rejected'])->save();
+
+        $this->actingAs($this->admin(), 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.withdrawals.index', ['status' => 'rejected']))
+            ->assertOk()
+            ->assertSee('All-time INR totals; filters only affect the list below.')
+            ->assertSee('₹106.05')
+            ->assertSee('₹30.30')
+            ->assertSee('₹35.35')
+            ->assertSee('₹40.40')
+            ->assertSee('4 requests')
+            ->assertSee('2 requests')
+            ->assertSee('WDR-SUM-REJECTED')
+            ->assertDontSee('WDR-SUM-PENDING');
+    }
+
+    public function test_empty_withdrawal_summary_displays_zero_inr_amounts_and_counts(): void
+    {
+        $this->actingAs($this->admin(), 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.withdrawals.index'))
+            ->assertOk()
+            ->assertSee('₹0.00')
+            ->assertSee('0 requests');
     }
 
     public function test_guest_cannot_submit_withdrawal_or_sell_request(): void

@@ -25,6 +25,33 @@ class AdminExchangeController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
+        $summary = ExchangeRequest::query()
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COALESCE(ROUND(SUM(usdt_amount), 8), 0) as total_usdt')
+            ->selectRaw('COALESCE(ROUND(SUM(inr_amount), 2), 0) as total_inr')
+            ->selectRaw(
+                'COALESCE(ROUND(SUM(CASE WHEN status IN (?, ?) THEN usdt_amount ELSE 0 END), 8), 0) as pending_usdt',
+                ['pending', 'processing']
+            )
+            ->selectRaw(
+                'COALESCE(ROUND(SUM(CASE WHEN status IN (?, ?) THEN inr_amount ELSE 0 END), 2), 0) as pending_inr',
+                ['pending', 'processing']
+            )
+            ->selectRaw(
+                'COALESCE(ROUND(SUM(CASE WHEN status IN (?, ?) THEN usdt_amount ELSE 0 END), 8), 0) as approved_usdt',
+                ['approved', 'completed']
+            )
+            ->selectRaw(
+                'COALESCE(ROUND(SUM(CASE WHEN status IN (?, ?) THEN inr_amount ELSE 0 END), 2), 0) as approved_inr',
+                ['approved', 'completed']
+            )
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN usdt_amount ELSE 0 END), 8), 0) as rejected_usdt', ['rejected'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN inr_amount ELSE 0 END), 2), 0) as rejected_inr', ['rejected'])
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as pending_count', ['pending', 'processing'])
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as approved_count', ['approved', 'completed'])
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_count', ['rejected'])
+            ->first();
+
         $exchanges = ExchangeRequest::with('user:id,name,email,customer_id')
             ->when($validated['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
@@ -46,6 +73,7 @@ class AdminExchangeController extends Controller
 
         return view('admin.exchanges.index', [
             'exchanges' => $exchanges,
+            'summary' => $summary,
             'ratePlans' => ExchangeRate::query()->orderBy('minimum_amount')->get(['plan_key', 'name']),
         ]);
     }
@@ -61,13 +89,6 @@ class AdminExchangeController extends Controller
             'audit' => AuditLog::where('auditable_type', ExchangeRequest::class)
                 ->where('auditable_id', $exchangeRequest->id)->with('actor')->latest()->get(),
         ]);
-    }
-
-    public function approve(Request $request, ExchangeRequest $exchangeRequest, SellRequestService $sellRequests): RedirectResponse
-    {
-        $sellRequests->approve($exchangeRequest, $request->user('admin'), $request->ip());
-
-        return back()->with('status', 'Sell request approved. USD was finalized and INR was credited to the customer INR Wallet.');
     }
 
     public function reject(Request $request, ExchangeRequest $exchangeRequest, SellRequestService $sellRequests): RedirectResponse

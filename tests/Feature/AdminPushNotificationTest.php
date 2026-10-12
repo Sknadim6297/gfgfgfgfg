@@ -52,6 +52,27 @@ class AdminPushNotificationTest extends TestCase
             ->assertSee('Firebase accepted the request; it does not confirm a device displayed it.');
     }
 
+    public function test_admin_campaign_summary_uses_all_time_database_statuses(): void
+    {
+        $admin = $this->admin();
+        $this->campaign($admin, ['status' => 'queued']);
+        $this->campaign($admin, ['status' => 'processing']);
+        $this->campaign($admin, ['status' => 'completed']);
+        $this->campaign($admin, ['status' => 'completed_with_failures']);
+        $this->campaign($admin, ['status' => 'failed']);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.push-notifications.index'))
+            ->assertOk()
+            ->assertSee('All-time campaign counts; the campaign history pagination does not affect these totals.')
+            ->assertSee('Total campaigns')
+            ->assertSee('Queued / processing')
+            ->assertSee('2')
+            ->assertSee('Completed')
+            ->assertSee('Failed');
+    }
+
     public function test_empty_subscriber_list_explains_disabled_queue_button(): void
     {
         $admin = $this->admin();

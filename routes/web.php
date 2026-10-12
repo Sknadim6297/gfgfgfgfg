@@ -26,7 +26,9 @@ Route::get('/', [PublicPagesController::class, 'landing'])->name('landing');
 Route::get('/exchange', [PublicPagesController::class, 'exchange'])->name('exchange');
 Route::get('/exchange/sell/estimate', [CustomerExchangeRequestController::class, 'estimate'])->middleware('throttle:60,1')->name('exchange.sell.estimate');
 Route::get('/contact', [SupportTicketController::class, 'index'])->name('contact');
-Route::post('/support/tickets', [SupportTicketController::class, 'store'])->middleware('throttle:5,1')->name('support.tickets.store');
+Route::post('/support/tickets', [SupportTicketController::class, 'store'])
+    ->middleware(['throttle:5,1', 'impersonation.readonly'])
+    ->name('support.tickets.store');
 Route::get('/dashboard', fn () => redirect()->route('home'))->name('dashboard');
 
 Route::middleware('guest:web')->group(function (): void {
@@ -40,7 +42,7 @@ Route::middleware('guest:web')->group(function (): void {
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1')->name('password.update');
 });
 
-Route::middleware(['auth:web', 'auth.session'])->group(function (): void {
+Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::middleware('active.account')->group(function (): void {
@@ -109,12 +111,13 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
 
             Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
             Route::get('/users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+            Route::post('/users/{user}/impersonate', [AdminUserController::class, 'impersonate'])->name('users.impersonate');
+            Route::post('/impersonation/stop', [AdminUserController::class, 'stopImpersonating'])->name('impersonation.stop');
             Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
             Route::post('/users/{user}/bank-verification/verify', [AdminUserController::class, 'verifyBank'])->name('users.bank.verify');
             Route::post('/users/{user}/bank-verification/reject', [AdminUserController::class, 'rejectBank'])->name('users.bank.reject');
 
             Route::get('/exchanges', [AdminExchangeController::class, 'index'])->name('exchanges.index');
-            Route::post('/exchanges/{exchangeRequest:request_reference}/approve', [AdminExchangeController::class, 'approve'])->name('exchanges.approve');
             Route::post('/exchanges/{exchangeRequest:request_reference}/reject', [AdminExchangeController::class, 'reject'])->name('exchanges.reject');
             Route::get('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'show'])->name('exchanges.show');
             Route::put('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'update'])->name('exchanges.update');
