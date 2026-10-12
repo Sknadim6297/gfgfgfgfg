@@ -31,7 +31,7 @@ class DepositController extends Controller
         return view('pages.deposit.create', [
             'settings' => $settings,
             'qrImageAvailable' => $qrImageAvailable,
-            'paymentSettingsAvailable' => $this->hasActivePaymentSettings($settings, $qrImageAvailable),
+            'paymentSettingsAvailable' => $settings?->hasActivePaymentSettings($qrImageAvailable) ?? false,
             'submissionKey' => (string) Str::uuid(),
         ]);
     }
@@ -66,7 +66,7 @@ class DepositController extends Controller
         $settings = DepositSettings::query()->find(1);
         $qrPath = $settings?->qr_path;
         $qrImageAvailable = DepositSettings::isManagedQrPath($qrPath) && Storage::disk('local')->exists($qrPath);
-        if (! $this->hasActivePaymentSettings($settings, $qrImageAvailable)) {
+        if (! ($settings?->hasActivePaymentSettings($qrImageAvailable) ?? false)) {
             return back()->withInput()->withErrors([
                 'payment' => 'Payment instructions are currently unavailable. Please try again later.',
             ]);
@@ -161,7 +161,7 @@ class DepositController extends Controller
         $settings = DepositSettings::query()->find(1);
         $qrPath = $settings?->qr_path;
         $qrImageAvailable = DepositSettings::isManagedQrPath($qrPath) && Storage::disk('local')->exists($qrPath);
-        abort_unless($this->hasActivePaymentSettings($settings, $qrImageAvailable), 404);
+        abort_unless($settings?->hasActivePaymentSettings($qrImageAvailable) ?? false, 404);
 
         return Storage::disk('local')->response($qrPath, null, [
             'Cache-Control' => 'private, no-store',
@@ -194,10 +194,4 @@ class DepositController extends Controller
         return $sqlState === '23000' || $driverCode === 19;
     }
 
-    private function hasActivePaymentSettings(?DepositSettings $settings, bool $qrImageAvailable): bool
-    {
-        return $qrImageAvailable
-            && filled($settings?->recipient_name)
-            && filled($settings?->instructions);
-    }
 }

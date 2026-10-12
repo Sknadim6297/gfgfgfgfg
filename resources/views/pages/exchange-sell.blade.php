@@ -97,7 +97,7 @@
                         error.textContent = exception.message;
                         error.hidden = false;
                     }
-                }, 160);
+                }, 400);
             });
         })();
     </script>

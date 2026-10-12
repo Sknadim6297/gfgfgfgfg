@@ -59,6 +59,101 @@ class SellRequestWorkflowTest extends TestCase
         $this->assertSame(1, ExchangeRequest::where('user_id', $customer->id)->count());
     }
 
+    public function test_normal_customer_browsing_is_not_limited_by_financial_submission_throttles(): void
+    {
+        $customer = User::factory()->create();
+        $this->actingAs($customer, 'web');
+
+        for ($request = 0; $request < 10; $request++) {
+            $this->get(route('home'))->assertOk();
+        }
+    }
+
+    public function test_sell_throttle_returns_retry_after_but_allows_idempotent_retries_after_limit(): void
+    {
+        $this->seed(ExchangeRateSeeder::class);
+        $customer = User::factory()->create(['balance' => '100.00000000']);
+        $firstSubmission = null;
+
+        for ($index = 0; $index < 5; $index++) {
+            $submissionKey = (string) Str::uuid();
+            $quoteToken = $this->quoteSell($customer, '1', $submissionKey);
+            $this->submitSellWithQuote($submissionKey, '1', $quoteToken)->assertRedirect();
+
+            if ($index === 0) {
+                $firstSubmission = [$submissionKey, $quoteToken];
+            }
+        }
+
+        $limitedKey = (string) Str::uuid();
+        $limitedQuote = $this->quoteSell($customer, '1', $limitedKey);
+        $this->submitSellWithQuote($limitedKey, '1', $limitedQuote)
+            ->assertStatus(429)
+            ->assertHeader('Retry-After')
+            ->assertSee('Please wait a moment');
+
+        [$firstKey, $firstQuote] = $firstSubmission;
+        $this->submitSellWithQuote($firstKey, '1', $firstQuote)
+            ->assertRedirect()
+            ->assertHeaderMissing('Retry-After');
+
+        $this->submitSellWithQuote($firstKey, '1', $firstQuote, '9999')
+            ->assertStatus(422)
+            ->assertSee('Incorrect Wallet Transaction PIN.');
+        for ($retry = 0; $retry < 3; $retry++) {
+            $this->submitSellWithQuote($firstKey, '1', $firstQuote)->assertRedirect();
+        }
+        $this->submitSellWithQuote($firstKey, '1', $firstQuote)
+            ->assertStatus(429)
+            ->assertHeader('Retry-After');
+
+        $foreignOwner = User::factory()->create(['balance' => '10.00000000']);
+        $foreignKey = (string) Str::uuid();
+        $foreignQuote = $this->quoteSell($foreignOwner, '1', $foreignKey);
+        $this->submitSellWithQuote($foreignKey, '1', $foreignQuote)->assertRedirect();
+        $customerForeignQuote = $this->quoteSell($customer, '1', $foreignKey);
+        $this->submitSellWithQuote($foreignKey, '1', $customerForeignQuote)
+            ->assertStatus(429)
+            ->assertHeader('Retry-After');
+
+        $this->assertSame(5, ExchangeRequest::query()->where('user_id', $customer->id)->count());
+        $this->assertSame(5, BalanceLedgerEntry::query()
+            ->where('user_id', $customer->id)
+            ->where('entry_type', 'debit')
+            ->count());
+        $this->assertSame(5, InrLedgerEntry::query()
+            ->where('user_id', $customer->id)
+            ->where('entry_type', 'credit')
+            ->count());
+        $this->assertSame('95.00000000', $customer->fresh()->balance);
+        $this->assertSame('500.00', $customer->fresh()->inr_balance);
+
+        $this->withHeader('Accept', 'application/json')
+            ->post(route('exchange.requests.store'), [
+                'submission_key' => $limitedKey,
+                'quote_token' => $limitedQuote,
+                'amount' => '1',
+                'wallet_transaction_pin' => '1234',
+            ])
+            ->assertStatus(429)
+            ->assertHeader('Retry-After')
+            ->assertJsonStructure(['message', 'retry_after']);
+    }
+
+    public function test_guest_cannot_use_an_existing_customers_submission_key_to_skip_authentication(): void
+    {
+        $owner = User::factory()->create(['balance' => '5.00000000']);
+        $exchange = $this->submitSell($owner, '1');
+
+        auth('web')->logout();
+        $this->post(route('exchange.requests.store'), [
+            'submission_key' => $exchange->submission_key,
+            'quote_token' => 'invalid',
+            'amount' => '1',
+            'wallet_transaction_pin' => '1234',
+        ])->assertRedirect(route('login'));
+    }
+
     public function test_new_completed_sells_qualify_referral_and_credit_each_configured_level_once(): void
     {
         $this->seed(ExchangeRateSeeder::class);
@@ -586,13 +681,17 @@ SQL);
         return $this->quoteToken($quote->getContent());
     }
 
-    private function submitSellWithQuote(string $submissionKey, string $amount, string $quoteToken): \Illuminate\Testing\TestResponse
-    {
+    private function submitSellWithQuote(
+        string $submissionKey,
+        string $amount,
+        string $quoteToken,
+        string $transactionPin = '1234',
+    ): \Illuminate\Testing\TestResponse {
         return $this->post(route('exchange.requests.store'), [
             'submission_key' => $submissionKey,
             'quote_token' => $quoteToken,
             'amount' => $amount,
-            'wallet_transaction_pin' => '1234',
+            'wallet_transaction_pin' => $transactionPin,
         ]);
     }
 

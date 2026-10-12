@@ -55,9 +55,12 @@ class AdminUserController extends Controller
 
     public function show(User $user): View
     {
+        $bankVerificationStatus = $user->bankVerificationStatusForAdminDirectory();
+
         return view('admin.users.show', [
             'user' => $user,
-            'bankVerificationStatus' => $user->bankVerificationStatus(),
+            'bankVerificationStatus' => $bankVerificationStatus,
+            'bankDetailsAvailable' => $bankVerificationStatus !== 'data_error' && $user->hasCompleteBankDetails(),
             'exchanges' => $user->exchangeRequests()->latest()->paginate(10),
             'activity' => AuditLog::with('actor')->where('subject_user_id', $user->id)->latest()->limit(30)->get(),
         ]);

@@ -1,13 +1,17 @@
 <?php
 
 use App\Http\Middleware\EnsureActiveAccount;
+use App\Http\Middleware\EnsureBankVerificationPermission;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
 use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureImpersonationIsReadOnly;
+use App\Http\Middleware\IdempotentFinancialThrottle;
+use App\Http\Middleware\ScopedThrottleRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -22,10 +26,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'active.account' => EnsureActiveAccount::class,
+            'bank.verification' => EnsureBankVerificationPermission::class,
             'admin.session' => EnsureAdminSessionFresh::class,
             'admin.role' => EnsureAdminRole::class,
             'admin.2fa' => EnsureAdminTwoFactor::class,
             'impersonation.readonly' => EnsureImpersonationIsReadOnly::class,
+            'financial.throttle' => IdempotentFinancialThrottle::class,
+            'route.throttle' => ScopedThrottleRequests::class,
         ]);
         $middleware->redirectGuestsTo(
             fn (Request $request): string => $request->is('admin', 'admin/*')
@@ -39,5 +46,20 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (ThrottleRequestsException $exception, Request $request) {
+            $headers = $exception->getHeaders();
+            $retryAfter = (int) ($headers['Retry-After'] ?? 60);
+            $message = 'You have made too many requests. Please wait before trying again.';
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => $message,
+                    'retry_after' => $retryAfter,
+                ], 429, $headers);
+            }
+
+            return response()->view('errors.429', [
+                'retryAfter' => $retryAfter,
+            ], 429, $headers);
+        });
     })->create();

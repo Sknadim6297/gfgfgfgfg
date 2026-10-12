@@ -140,7 +140,7 @@
 
                 <div class="col-6 col-md-3">
 
-                    <a class="action-card" href="{{ route('deposit.create') }}" aria-label="Deposit add funds">
+                    <a class="action-card" href="{{ route('deposit.create') }}" aria-label="Deposit add funds" @if (! $depositAvailable) aria-disabled="true" @endif>
 
                         <div class="action-icon">
 
@@ -445,7 +445,7 @@
                         error.textContent = exception.message;
                         error.hidden = false;
                     }
-                }, 180);
+                }, 400);
             });
         })();
     </script>

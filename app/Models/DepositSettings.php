@@ -20,6 +20,13 @@ class DepositSettings extends Model
         return is_string($path) && preg_match('~\Adeposits/qr/[A-Za-z0-9._-]+\z~D', $path) === 1;
     }
 
+    public function hasActivePaymentSettings(bool $qrImageAvailable): bool
+    {
+        return $qrImageAvailable
+            && filled($this->recipient_name)
+            && filled($this->instructions);
+    }
+
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by_user_id');

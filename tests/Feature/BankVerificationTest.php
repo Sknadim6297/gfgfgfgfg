@@ -147,8 +147,13 @@ class BankVerificationTest extends TestCase
             ->get(route('admin.users.show', $customer))
             ->assertOk()
             ->assertSee('Pending')
-            ->assertSee('••••••9012')
-            ->assertDontSee('123456789012')
+            ->assertSee('Morgan Example')
+            ->assertSee('Example Bank')
+            ->assertSee('123456789012')
+            ->assertSee('ABCD0123456')
+            ->assertSee('Central Branch')
+            ->assertSee('Savings')
+            ->assertSee('Full bank account number')
             ->assertSee('Reject bank details');
         $this->get(route('admin.users.index', ['bank_status' => 'pending']))
             ->assertOk()
@@ -161,11 +166,63 @@ class BankVerificationTest extends TestCase
         $this->post(route('admin.users.bank.verify', $customer))
             ->assertRedirect();
         $this->assertSame('verified', $customer->fresh()->bankVerificationStatus());
+        $this->assertNotNull($customer->fresh()->bank_verified_at);
         $this->assertDatabaseHas('audit_logs', ['event' => 'admin.bank_details_verified']);
 
         $anotherAdmin = $this->admin();
         $this->post(route('admin.users.bank.verify', $anotherAdmin))
             ->assertNotFound();
+    }
+
+    public function test_full_bank_details_are_not_exposed_to_unauthorized_admin_or_in_customer_directory(): void
+    {
+        $customer = $this->customerWithBank('pending');
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.users.show', $customer))
+            ->assertRedirect(route('admin.2fa.challenge'))
+            ->assertDontSee('123456789012');
+
+        auth('admin')->logout();
+        $this->actingAs(User::factory()->create(), 'web')
+            ->get(route('admin.users.show', $customer))
+            ->assertRedirect(route('admin.login'))
+            ->assertDontSee('123456789012');
+
+        auth('web')->logout();
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->assertDontSee('123456789012')
+            ->assertDontSee('ABCD0123456');
+    }
+
+    public function test_bank_verification_actions_require_authorized_admin_session(): void
+    {
+        $customer = $this->customerWithBank('pending');
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.users.bank.verify', $customer))
+            ->assertRedirect(route('admin.2fa.challenge'));
+        $this->assertSame('pending', $customer->fresh()->bankVerificationStatus());
+
+        $this->withSession(['admin_2fa_verified' => true])
+            ->post(route('admin.users.bank.reject', $customer), [
+                'reason' => 'Submitted account details could not be verified.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Bank details rejected.');
+
+        $this->assertSame('rejected', $customer->fresh()->bankVerificationStatus());
+        $this->assertSame('Submitted account details could not be verified.', $customer->fresh()->bank_verification_reason);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $admin->id,
+            'subject_user_id' => $customer->id,
+            'event' => 'admin.bank_details_rejected',
+        ]);
     }
 
     public function test_admin_user_directory_shows_data_error_for_legacy_plaintext_bank_data_without_mutating_it(): void

@@ -206,6 +206,51 @@ class WalletTest extends TestCase
         $this->assertSame(1, InrLedgerEntry::where('source_type', 'withdrawal_request')->where('entry_type', 'hold')->count());
     }
 
+    public function test_withdrawal_retries_remain_idempotent_after_the_submission_limit_is_reached(): void
+    {
+        $customer = $this->userWithBalances(['inr_balance' => '20.00']);
+        $this->actingAs($customer, 'web');
+        $firstPayload = null;
+
+        for ($index = 0; $index < 5; $index++) {
+            $payload = [
+                'submission_key' => (string) Str::uuid(),
+                'amount' => '1.00',
+                'payout_method' => 'cash',
+                'wallet_transaction_pin' => '1234',
+            ];
+            $this->post(route('wallet.withdrawals.store'), $payload)->assertRedirect();
+
+            if ($index === 0) {
+                $firstPayload = $payload;
+            }
+        }
+
+        $this->post(route('wallet.withdrawals.store'), [
+            'submission_key' => (string) Str::uuid(),
+            'amount' => '1.00',
+            'payout_method' => 'cash',
+            'wallet_transaction_pin' => '1234',
+        ])->assertStatus(429)->assertHeader('Retry-After');
+
+        $withdrawal = WithdrawalRequest::query()->where('user_id', $customer->id)->orderBy('id')->firstOrFail();
+        $this->post(route('wallet.withdrawals.store'), $firstPayload)
+            ->assertRedirect(route('wallet.withdrawals.show', $withdrawal));
+
+        $this->assertSame(5, WithdrawalRequest::query()->where('user_id', $customer->id)->count());
+        $this->assertSame(5, InrLedgerEntry::query()
+            ->where('source_type', 'withdrawal_request')
+            ->where('entry_type', 'hold')
+            ->count());
+        $this->assertSame('15.00', $customer->fresh()->inr_balance);
+
+        $this->post(route('wallet.withdrawals.store'), [
+            ...$firstPayload,
+            'wallet_transaction_pin' => '9999',
+        ])->assertSessionHasErrors('wallet_transaction_pin');
+        $this->assertSame('15.00', $customer->fresh()->inr_balance);
+    }
+
     public function test_withdrawal_reject_refunds_once_and_completion_requires_external_reference(): void
     {
         $customer = $this->customerWithBank(['inr_balance' => '1000.00']);
@@ -491,10 +536,17 @@ class WalletTest extends TestCase
 
     public function test_guest_cannot_submit_withdrawal_or_sell_request(): void
     {
+        $owner = User::factory()->create(['balance' => '5.00']);
+        $existingSell = $this->exchange($owner, '1.00', '100.00000000', '100.00');
         $this->post(route('wallet.withdrawals.store'), [])->assertRedirect(route('login'));
-        $this->post(route('exchange.requests.store'), [])->assertRedirect(route('login'));
+        $this->post(route('exchange.requests.store'), [
+            'submission_key' => $existingSell->submission_key,
+            'quote_token' => 'invalid',
+            'amount' => '1.00',
+            'wallet_transaction_pin' => '1234',
+        ])->assertRedirect(route('login'));
         $this->assertSame(0, WithdrawalRequest::count());
-        $this->assertSame(0, ExchangeRequest::count());
+        $this->assertSame(1, ExchangeRequest::count());
     }
 
     public function test_wallet_shell_uses_profile_width_and_stacks_the_primary_actions(): void

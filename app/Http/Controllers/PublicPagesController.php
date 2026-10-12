@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DepositSettings;
 use App\Models\ExchangeRate;
 use App\Support\DemoPlatformActivity;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class PublicPagesController extends Controller
@@ -33,7 +35,18 @@ class PublicPagesController extends Controller
         return view('pages.exchange', [
             'ratePlans' => $ratePlans,
             'recordedBalance' => $customer?->role === 'user' ? $customer->balance : null,
+            'depositAvailable' => $this->depositAvailable(),
         ]);
+    }
+
+    private function depositAvailable(): bool
+    {
+        $settings = DepositSettings::query()->find(1);
+        $qrPath = $settings?->qr_path;
+        $qrImageAvailable = DepositSettings::isManagedQrPath($qrPath)
+            && Storage::disk('local')->exists($qrPath);
+
+        return $settings?->hasActivePaymentSettings($qrImageAvailable) ?? false;
     }
 
     private function activeRatePlans()

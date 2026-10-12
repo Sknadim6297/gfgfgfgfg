@@ -304,7 +304,7 @@ class WalletTransactionPinTest extends TestCase
         Mail::fake();
         $route = \Illuminate\Support\Facades\Route::getRoutes()->getByName('wallet-pin.otp.send');
         $this->assertFalse(collect($route->gatherMiddleware())->contains(
-            fn (string $middleware): bool => str_starts_with($middleware, 'throttle:'),
+            fn (string $middleware): bool => str_starts_with($middleware, 'route.throttle:'),
         ));
         $user = User::factory()->create();
         $this->actingAs($user, 'web');
@@ -320,7 +320,12 @@ class WalletTransactionPinTest extends TestCase
             ->assertStatus(429)
             ->assertHeader('content-type', 'application/json')
             ->assertJsonStructure(['message', 'retry_after'])
-            ->assertJsonPath('retry_after', 600);
+            ->assertHeader('Retry-After');
+        $retryAfter = $limited->json('retry_after');
+        $this->assertIsInt($retryAfter);
+        $this->assertGreaterThan(0, $retryAfter);
+        $this->assertLessThanOrEqual(600, $retryAfter);
+        $this->assertSame((string) $retryAfter, $limited->headers->get('Retry-After'));
         $this->assertStringContainsString('Too many verification code requests.', $limited->json('message'));
         $this->assertStringNotContainsString('<html', strtolower($limited->getContent()));
         Mail::assertSent(WalletTransactionPinOtp::class, 5);

@@ -1050,6 +1050,11 @@ class AuthenticationAndPortalTest extends TestCase
 
         $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
             ->assertSessionHasErrors('email');
+
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'wrong'])
+            ->assertStatus(429)
+            ->assertHeader('Retry-After')
+            ->assertSee('Please wait a moment');
     }
 
     public function test_totp_matches_rfc6238_sha1_vector(): void

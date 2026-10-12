@@ -226,6 +226,55 @@ class DepositManagementTest extends TestCase
         $this->get(route('deposits.proof', $deposit))->assertOk();
     }
 
+    public function test_deposit_retries_remain_idempotent_after_the_submission_limit_is_reached(): void
+    {
+        Storage::fake('local');
+        $this->configureQr();
+        $customer = User::factory()->create();
+        $this->actingAs($customer, 'web');
+        $firstPayload = null;
+
+        for ($index = 0; $index < 5; $index++) {
+            $payload = [
+                'submission_key' => (string) Str::uuid(),
+                'amount' => '10.00',
+                'transaction_reference' => 'UTRDEPTEST'.str_pad((string) $index, 4, '0', STR_PAD_LEFT),
+            ];
+            $this->post(route('deposit.store'), $payload)->assertRedirect();
+
+            if ($index === 0) {
+                $firstPayload = $payload;
+            }
+        }
+
+        $this->post(route('deposit.store'), [
+            'submission_key' => (string) Str::uuid(),
+            'amount' => '10.00',
+            'transaction_reference' => 'UTRDEPTEST9999',
+        ])->assertStatus(429)->assertHeader('Retry-After');
+
+        $deposit = Deposit::query()->where('user_id', $customer->id)->orderBy('id')->firstOrFail();
+        $this->post(route('deposit.store'), $firstPayload)
+            ->assertRedirect(route('deposits.show', $deposit));
+
+        $this->assertSame(5, Deposit::query()->where('user_id', $customer->id)->count());
+        $this->assertSame(0, BalanceLedgerEntry::query()->where('user_id', $customer->id)->count());
+    }
+
+    public function test_exchange_page_marks_deposit_unavailable_only_when_payment_setup_is_incomplete(): void
+    {
+        Storage::fake('local');
+
+        $this->get(route('exchange'))
+            ->assertOk()
+            ->assertSee('aria-disabled="true"', false);
+
+        $this->configureQr();
+        $this->get(route('exchange'))
+            ->assertOk()
+            ->assertDontSee('aria-disabled="true"', false);
+    }
+
     public function test_approval_credits_exactly_once_and_rejection_never_credits(): void
     {
         Storage::fake('local');

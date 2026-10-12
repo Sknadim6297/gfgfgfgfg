@@ -32,20 +32,21 @@
     </div>
     <section class="admin-panel admin-section-gap">
         <div class="admin-panel-heading">
-            <div><span class="admin-eyebrow">PAYOUT INFORMATION</span><h2>Bank details</h2><p>Bank account numbers are masked in the Admin summary.</p></div>
-            <span class="portal-badge {{ $bankVerificationStatus === 'not_submitted' ? 'inactive' : $bankVerificationStatus }}"><span class="admin-badge-dot"></span>{{ str($bankVerificationStatus)->replace('_', ' ')->title() }}</span>
+            <div><span class="admin-eyebrow">PAYOUT INFORMATION / BANK VERIFICATION</span><h2>Bank details</h2><p>Full account details are visible only to active, two-factor verified administrators.</p></div>
+            <span class="portal-badge {{ $bankVerificationStatus === 'not_submitted' || $bankVerificationStatus === 'data_error' ? 'inactive' : $bankVerificationStatus }}"><span class="admin-badge-dot"></span>{{ str($bankVerificationStatus)->replace('_', ' ')->title() }}</span>
         </div>
-        @if ($user->hasCompleteBankDetails())
+        @if ($bankDetailsAvailable)
             <dl class="admin-detail-list">
                 <div><dt>Customer</dt><dd>{{ $user->name }}<small>{{ $user->email }}</small></dd></div>
                 <div><dt>Customer ID</dt><dd>{{ $user->customer_id }}</dd></div>
-                <div><dt>Account holder</dt><dd>{{ $user->account_holder_name }}</dd></div>
+                <div><dt>Account holder name</dt><dd>{{ $user->account_holder_name }}</dd></div>
+                <div><dt>Full bank account number</dt><dd>{{ $user->account_number }}</dd></div>
                 <div><dt>Bank name</dt><dd>{{ $user->bank_name }}</dd></div>
-                <div><dt>Account number</dt><dd>{{ $user->maskedBankAccountNumber() }}</dd></div>
-                <div><dt>IFSC</dt><dd>{{ $user->ifsc_code }}</dd></div>
-                <div><dt>Branch</dt><dd>{{ $user->branch_name }}</dd></div>
-                <div><dt>Account type</dt><dd>{{ $user->account_type }}</dd></div>
+                <div><dt>IFSC code</dt><dd>{{ $user->ifsc_code }}</dd></div>
+                <div><dt>Branch name</dt><dd>{{ $user->branch_name ?: 'Not provided' }}</dd></div>
+                <div><dt>Account type</dt><dd>{{ $user->account_type ?: 'Not provided' }}</dd></div>
                 <div><dt>Submitted / updated</dt><dd>{{ $user->bank_submitted_at?->format('M j, Y · H:i') ?? 'Not recorded' }}</dd></div>
+                <div><dt>Verified at</dt><dd>{{ $user->bank_verified_at?->format('M j, Y · H:i') ?? 'Not verified' }}</dd></div>
                 <div><dt>Verification status</dt><dd>{{ str($bankVerificationStatus)->replace('_', ' ')->title() }}</dd></div>
                 @if ($bankVerificationStatus === 'rejected')
                     <div><dt>Rejection reason</dt><dd>{{ $user->bank_verification_reason }}</dd></div>
@@ -66,6 +67,8 @@
                     </form>
                 </div>
             @endif
+        @elseif ($bankVerificationStatus === 'data_error')
+            <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Bank details could not be securely decrypted. Do not approve this record; investigate the encrypted data through the approved recovery process.</p></div>
         @else
             <div class="admin-inline-notice"><i class="bi bi-info-circle" aria-hidden="true"></i><p>No complete bank details have been submitted.</p></div>
         @endif
