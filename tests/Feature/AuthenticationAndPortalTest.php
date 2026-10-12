@@ -623,7 +623,6 @@ class AuthenticationAndPortalTest extends TestCase
             ->assertSee('Fast &amp; secure USDT', false)
             ->assertSee('Exchange Now')
             ->assertSee('DEMO PLATFORM ACTIVITY')
-            ->assertSee('Illustrative statistics and sample activity — not live customer transactions.')
             ->assertSee(number_format($demo['active_clients']))
             ->assertSee($demo['deposit_display'])
             ->assertSee($demo['inr_display'])

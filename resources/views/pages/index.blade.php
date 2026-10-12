@@ -178,8 +178,6 @@
 
             </div>
 
-            <p class="demo-activity-disclaimer">Illustrative statistics and sample activity — not live customer transactions.</p>
-
         </section>
 
             <!-- WHY CHOOSE US -->

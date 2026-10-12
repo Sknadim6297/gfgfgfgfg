@@ -25,25 +25,30 @@
                         <h1>Referral dashboard</h1>
                         <p>Track your invitations, qualification progress, and credited rewards.</p>
                     </div>
+                    <span class="referral-heading-mark"><i class="bi bi-people-fill" aria-hidden="true"></i> Your network</span>
                 </header>
 
                 <section class="referral-overview" aria-label="Referral overview">
-                    <article class="referral-metric">
+                    <article class="referral-metric referral-metric-total">
+                        <span class="referral-metric-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
                         <span>Total referrals</span>
                         <strong>{{ number_format($totalReferrals) }}</strong>
                         <small>Registered with your referral code</small>
                     </article>
-                    <article class="referral-metric">
+                    <article class="referral-metric referral-metric-qualified">
+                        <span class="referral-metric-icon"><i class="bi bi-patch-check" aria-hidden="true"></i></span>
                         <span>Qualified</span>
                         <strong>{{ number_format($qualifiedReferrals) }}</strong>
                         <small>Reached the 500 USDT threshold</small>
                     </article>
-                    <article class="referral-metric">
+                    <article class="referral-metric referral-metric-pending">
+                        <span class="referral-metric-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
                         <span>Pending qualification</span>
                         <strong>{{ number_format($pendingReferrals) }}</strong>
                         <small>Still progressing toward qualification</small>
                     </article>
                     <article class="referral-metric referral-metric-earned">
+                        <span class="referral-metric-icon"><i class="bi bi-currency-rupee" aria-hidden="true"></i></span>
                         <span>Total commission earned</span>
                         <strong>{{ \App\Support\Money::formatInr($totalEarned) }}</strong>
                         <small>Credited to your INR wallet</small>
@@ -97,7 +102,7 @@
                     <div>
                         <span class="referral-eyebrow">MEMBER ACTIVITY</span>
                         <h2>Qualification progress</h2>
-                        <p>Completed USDT sells count toward progress. Only sells completed after referral qualification tracking was enabled can trigger a new commission; earlier sells are shown separately and are not paid retroactively.</p>
+                        <p>Completed USDT sells count toward the 500 USDT threshold. Older sells remain visible in history and are never credited retroactively.</p>
                     </div>
                     <span class="referral-threshold">Threshold · 500 USDT</span>
                 </header>
@@ -108,8 +113,8 @@
                             <div>
                                 <span class="referral-eyebrow">REFERRED MEMBER</span>
                                 <strong>{{ $referral->name }}</strong>
-                                <small>Customer {{ $progress['masked_customer_id'] }}</small>
-                                <small>Level 1 · Joined {{ $referral->created_at->timezone(config('app.timezone'))->format('M j, Y') }}</small>
+                                <span class="referral-member-id">Customer {{ $progress['masked_customer_id'] }}</span>
+                                <small class="referral-joined-date"><i class="bi bi-calendar3" aria-hidden="true"></i> Joined {{ $referral->created_at->timezone(config('app.timezone'))->format('M j, Y') }} <span>·</span> Level 1</small>
                             </div>
                             <span class="portal-badge {{ $progress['qualified'] ? 'completed' : 'pending' }}">{{ $progress['qualified'] ? 'Qualified' : 'In progress' }}</span>
                         </div>
@@ -124,10 +129,12 @@
                         @else
                             <progress class="referral-progress-bar" max="500" value="{{ \App\Support\Decimal::compare($progress['eligible_total'], '500.00000000', 8) >= 0 ? '500' : $progress['eligible_total'] }}" aria-label="Qualification progress for {{ $referral->name }}">{{ $progress['eligible_total'] }} / 500 USDT</progress>
                         @endif
-                        <a class="referral-member-link" href="{{ route('profile.referrals.member', $referral) }}">View sell and commission history <span aria-hidden="true">→</span></a>
+                        <div class="referral-progress-footer">
+                            <a class="referral-member-link" href="{{ route('profile.referrals.member', $referral) }}"><i class="bi bi-clock-history" aria-hidden="true"></i> View member activity <span aria-hidden="true">→</span></a>
                         @if (! $progress['qualified'] && $estimatedLevelOneReward !== null)
-                            <p class="referral-progress-note">Estimated reward — not earned or payable until qualification. Potential Level 1 reward: {{ \App\Support\Money::formatInr((string) $estimatedLevelOneReward) }}.</p>
+                            <p class="referral-progress-note referral-estimate"><i class="bi bi-info-circle" aria-hidden="true"></i> Estimated reward — not earned or payable until qualification. Potential Level 1 reward: <strong>{{ \App\Support\Money::formatInr((string) $estimatedLevelOneReward) }}</strong></p>
                         @endif
+                        </div>
                     </article>
                 @empty
                     <div class="referral-empty-state">
@@ -154,15 +161,17 @@
                     <article class="referral-commission-card">
                         <div class="referral-commission-heading">
                             <div>
-                                <span class="referral-eyebrow">LEVEL {{ $commission->level }} COMMISSION</span>
+                                <span class="referral-eyebrow">LEVEL {{ $commission->level }} REWARD</span>
                                 <strong>{{ $commission->qualifiedUser?->name ?? 'Referral member' }}</strong>
                             </div>
-                            <span class="portal-badge {{ $commission->status }}">{{ ucfirst($commission->status) }}</span>
+                            <div class="referral-commission-status">
+                                <strong class="referral-commission-amount">{{ \App\Support\Money::formatInr((string) $commission->amount) }}</strong>
+                                <span class="portal-badge {{ $commission->status }}">{{ ucfirst($commission->status) }}</span>
+                            </div>
                         </div>
                         <dl class="referral-commission-details">
                             <div><dt>Qualification date</dt><dd>{{ $commission->qualified_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</dd></div>
                             <div><dt>Qualifying amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) ($commission->qualification?->cumulative_usdt_equivalent ?? '0')) }} USDT</dd></div>
-                            <div><dt>Commission</dt><dd>{{ \App\Support\Money::formatInr((string) $commission->amount) }}</dd></div>
                             <div>
                                 <dt>Credit details</dt>
                                 <dd>
