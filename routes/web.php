@@ -81,7 +81,10 @@ Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly'])->group
         Route::get('/deposit', [DepositController::class, 'create'])->name('deposit.create');
         Route::post('/deposit', [DepositController::class, 'store'])->middleware('financial.throttle:deposit,5,1')->name('deposit.store');
         Route::get('/deposit/payment-qr', [DepositController::class, 'paymentQr'])->name('deposit.payment-qr');
+        Route::get('/deposit/network-logo', [DepositController::class, 'networkLogo'])->name('deposit.network-logo');
         Route::get('/deposits/{deposit}', [DepositController::class, 'show'])->name('deposits.show');
+        Route::post('/deposits/{deposit}/transaction-hash', [DepositController::class, 'submitTransactionHash'])->middleware('financial.throttle:deposit,5,1')->name('deposits.transaction-hash.store');
+        Route::get('/deposits/{deposit}/images/{image}', [DepositController::class, 'image'])->whereIn('image', ['logo', 'qr'])->name('deposits.image');
         Route::get('/deposits/{deposit}/proof', [DepositController::class, 'proof'])->name('deposits.proof');
     });
 });
@@ -150,9 +153,11 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
             Route::put('/deposit-settings', [AdminDepositSettingsController::class, 'update'])->name('deposit-settings.update');
             Route::delete('/deposit-settings', [AdminDepositSettingsController::class, 'destroy'])->name('deposit-settings.destroy');
             Route::get('/deposit-settings/qr', [AdminDepositSettingsController::class, 'qr'])->name('deposit-settings.qr');
+            Route::get('/deposit-settings/logo', [AdminDepositSettingsController::class, 'logo'])->name('deposit-settings.logo');
             Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits.index');
             Route::get('/deposits/{deposit}', [AdminDepositController::class, 'show'])->name('deposits.show');
             Route::put('/deposits/{deposit}', [AdminDepositController::class, 'update'])->name('deposits.update');
+            Route::get('/deposits/{deposit}/images/{image}', [AdminDepositController::class, 'image'])->whereIn('image', ['logo', 'qr'])->name('deposits.image');
             Route::get('/deposits/{deposit}/proof', [AdminDepositController::class, 'proof'])->name('deposits.proof');
         });
     });

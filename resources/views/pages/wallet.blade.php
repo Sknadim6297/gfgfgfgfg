@@ -55,8 +55,8 @@
                     <h2 id="deposit-history-title"><i class="bi bi-arrow-down-left-circle" aria-hidden="true"></i> Deposit History</h2>
                 </div>
                 <form class="wallet-filters" method="GET" action="{{ route('wallet') }}" role="search">
-                    <label class="visually-hidden" for="wallet-search">Search deposit reference or transaction ID</label>
-                    <input class="portal-input" id="wallet-search" type="search" name="search" value="{{ request('search') }}" maxlength="150" placeholder="Search reference or transaction ID">
+                    <label class="visually-hidden" for="wallet-search">Search deposit ID or transaction hash</label>
+                    <input class="portal-input" id="wallet-search" type="search" name="search" value="{{ request('search') }}" maxlength="150" placeholder="Search deposit ID or transaction hash">
                     <label class="visually-hidden" for="wallet-deposit-status">Filter deposits by status</label>
                     <select class="portal-input" id="wallet-deposit-status" name="status">
                         <option value="">All deposit statuses</option>
@@ -73,13 +73,14 @@
                 @forelse ($deposits as $deposit)
                     <article class="wallet-history-item">
                         <div class="wallet-history-main">
-                            <div><span class="wallet-history-label">Reference ID</span><strong>{{ $deposit->deposit_id }}</strong></div>
-                            <div><span class="wallet-history-label">Amount (USD)</span><strong>{{ \App\Support\Money::formatUsd((string) $deposit->amount) }}</strong></div>
-                            <div><span class="wallet-history-label">Transaction ID</span><strong class="wallet-history-wrap">{{ $deposit->transaction_reference }}</strong></div>
+                            <div><span class="wallet-history-label">Deposit ID</span><strong>{{ $deposit->deposit_id }}</strong></div>
+                            <div><span class="wallet-history-label">Amount (USDT)</span><strong>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT</strong></div>
+                            <div><span class="wallet-history-label">Network</span><strong>{{ $deposit->network_name ?? '—' }}</strong></div>
+                            <div><span class="wallet-history-label">{{ $deposit->transaction_hash ? 'Transaction Hash' : 'Transaction' }}</span><strong class="wallet-history-wrap">{{ $deposit->transaction_hash ?? $deposit->transaction_reference ?? 'Not submitted' }}</strong></div>
                             <div><span class="wallet-history-label">Date</span><strong>{{ $deposit->submitted_at->format('M j, Y · H:i') }}</strong></div>
                         </div>
                         <div class="wallet-history-footer">
-                            <span class="portal-badge {{ $deposit->status }}">{{ ucfirst($deposit->status) }}</span>
+                            <span class="portal-badge {{ $deposit->status }}">{{ $deposit->customerStatusLabel() }}</span>
                             <a class="wallet-details-link" href="{{ route('deposits.show', $deposit) }}">Details <i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>
                         </div>
                         @if ($deposit->status === 'rejected' && $deposit->rejection_reason)

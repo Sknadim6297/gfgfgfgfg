@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Quick PayMoney | Add Deposit')
+@section('title', 'Quick PayMoney | Deposit USDT')
 
 @section('font')
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -16,74 +16,84 @@
 @section('content')
     <div class="main-wrapper">
         @include('partials.home-header')
+        <main class="deposit-page deposit-create-page">
+            <a class="deposit-back-link" href="{{ route('wallet') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to wallet</a>
 
-        <main class="deposit-page">
-            <a class="deposit-back-link" href="{{ route('exchange') }}"><i class="bi bi-arrow-left"></i> Back to exchange</a>
-            <header class="deposit-heading">
-                <span class="deposit-eyebrow">ADD FUNDS</span>
-                <h1>Submit a deposit request</h1>
-                <p>Use the payment details below, then submit your amount and transaction reference for manual review.</p>
-            </header>
+            @if (session('status'))
+                <div class="deposit-success-notice" role="status"><i class="bi bi-check-circle" aria-hidden="true"></i><p>{{ session('status') }}</p></div>
+            @endif
+            @if ($errors->has('payment'))
+                <div class="deposit-notice" role="alert"><i class="bi bi-info-circle" aria-hidden="true"></i><p>{{ $errors->first('payment') }}</p></div>
+            @endif
 
-            <div class="deposit-layout">
-                <section class="deposit-panel" aria-labelledby="deposit-payment-details-title">
-                    <div class="deposit-panel-heading">
-                        <span class="deposit-panel-icon"><i class="bi bi-qr-code" aria-hidden="true"></i></span>
-                        <div><h2 id="deposit-payment-details-title">Payment details</h2><p>Confirm the recipient and payment instructions before sending funds.</p></div>
-                    </div>
-                    @if ($qrImageAvailable)
-                        <a class="deposit-qr-link" href="{{ route('deposit.payment-qr') }}" target="_blank" rel="noopener">
-                            <img class="deposit-qr-image" src="{{ route('deposit.payment-qr') }}" alt="Payment QR code">
-                        </a>
-                        <p class="deposit-qr-caption">Scan to pay, or select the QR image to open it at full size.</p>
-                    @endif
-                    @if ($settings?->recipient_name)
-                        <dl class="deposit-recipient"><dt>Recipient name</dt><dd>{{ $settings->recipient_name }}</dd></dl>
-                    @endif
-                    @unless ($paymentSettingsAvailable)
-                        <div class="deposit-notice"><i class="bi bi-info-circle" aria-hidden="true"></i><p>Payment instructions are currently unavailable. Please try again later.</p></div>
-                        @if ($settings?->instructions)
-                            <div class="deposit-instructions"><strong>Payment instructions</strong><p>{{ $settings->instructions }}</p></div>
+            <section class="deposit-first-card" aria-labelledby="deposit-title">
+                <div class="deposit-brand-mark" aria-hidden="true"><i class="bi bi-wallet2"></i></div>
+                <span class="deposit-eyebrow">SECURE BLOCKCHAIN DEPOSIT</span>
+                <h1 id="deposit-title">Deposit USDT</h1>
+                <p class="deposit-first-subtitle">Add USDT to your Quick PayMoney wallet securely.</p>
+
+                <div class="deposit-available-balance">
+                    <span>Available Balance</span>
+                    <strong>{{ \App\Support\Money::formatUsdt($availableBalance) }} <small>USDT</small></strong>
+                </div>
+
+                <div class="deposit-field-section">
+                    <span class="deposit-section-label">SELECT NETWORK</span>
+                    <div class="deposit-network-choice" aria-current="true">
+                        @if ($logoImageAvailable)
+                            <img class="deposit-choice-logo" src="{{ route('deposit.network-logo') }}" alt="BEP20 network logo">
+                        @else
+                            <span class="deposit-choice-logo deposit-choice-fallback" aria-hidden="true"><i class="bi bi-diagram-3"></i></span>
                         @endif
-                    @endunless
-                </section>
-
-                <section class="deposit-panel" aria-labelledby="deposit-reference-title">
-                    <div class="deposit-panel-heading">
-                        <span class="deposit-panel-icon"><i class="bi bi-receipt" aria-hidden="true"></i></span>
-                        <div><h2 id="deposit-reference-title">Submit payment reference</h2><p>Provide the amount and transaction reference from your payment receipt.</p></div>
+                        <span class="deposit-network-choice-copy"><strong>BEP20</strong><small>BNB Smart Chain</small></span>
+                        <i class="bi bi-check-circle-fill deposit-network-selected" aria-label="Selected network"></i>
                     </div>
+                </div>
 
-                    @if ($paymentSettingsAvailable)
-                        <form class="deposit-form" method="POST" action="{{ route('deposit.store') }}" enctype="multipart/form-data">
-                            @csrf
-                            <input type="hidden" name="submission_key" value="{{ old('submission_key', $submissionKey) }}">
+                @if ($settings?->recipient_name || $settings?->instructions)
+                    <div class="deposit-first-instructions">
+                        <strong>Payment instructions</strong>
+                        @if ($settings?->recipient_name)<span>{{ $settings->recipient_name }}</span>@endif
+                        @if ($settings?->instructions)<p>{{ $settings->instructions }}</p>@endif
+                    </div>
+                @endif
 
-                            <label for="amount">Deposit amount (USD)</label>
-                            <input class="portal-input" id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 50.00" value="{{ old('amount') }}" maxlength="15" @if ($errors->has('amount')) aria-invalid="true" aria-describedby="deposit-amount-error" @endif required>
-                            @error('amount')<span class="deposit-field-error" id="deposit-amount-error">{{ $message }}</span>@enderror
+                @if ($paymentSettingsAvailable)
+                    <form class="deposit-first-form" method="POST" action="{{ route('deposit.store') }}" data-deposit-submit>
+                        @csrf
+                        <input type="hidden" name="submission_key" value="{{ old('submission_key', $submissionKey) }}">
+                        <label class="deposit-section-label" for="amount">DEPOSIT AMOUNT</label>
+                        <div class="deposit-amount-control">
+                            <input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" value="{{ old('amount') }}" maxlength="21" aria-describedby="deposit-minimum-help @if ($errors->has('amount')) deposit-amount-error @endif" required>
+                            <span>USDT</span>
+                        </div>
+                        <small class="deposit-field-hint" id="deposit-minimum-help">Minimum deposit: {{ \App\Support\Money::formatUsdt((string) $settings->minimum_amount) }} USDT · Up to 8 decimal places</small>
+                        @error('amount')<span class="deposit-field-error" id="deposit-amount-error">{{ $message }}</span>@enderror
+                        <div class="deposit-network-warning"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><p>Only send USDT through BEP20 on BNB Smart Chain. Funds sent using another network or token may be permanently lost.</p></div>
+                        <button class="deposit-gradient-button" type="submit"><span data-submit-label>Continue</span><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
+                    </form>
+                @else
+                    <div class="deposit-notice" role="status"><i class="bi bi-exclamation-circle" aria-hidden="true"></i><p>BEP20 deposits are not available right now. Please contact support or try again later.</p></div>
+                @endif
 
-                            <label for="transaction_reference">Transaction ID / UTR</label>
-                            <input class="portal-input" id="transaction_reference" name="transaction_reference" type="text" autocomplete="off" placeholder="Enter payment transaction reference" value="{{ old('transaction_reference') }}" maxlength="150" @if ($errors->has('transaction_reference')) aria-invalid="true" aria-describedby="deposit-reference-error" @endif required>
-                            @error('transaction_reference')<span class="deposit-field-error" id="deposit-reference-error">{{ $message }}</span>@enderror
-
-                            <label for="payment_proof">Payment proof screenshot <span>(optional, PNG/JPG/WebP, up to 5 MB)</span></label>
-                            <input class="portal-input deposit-file-input" id="payment_proof" name="payment_proof" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" @if ($errors->has('payment_proof')) aria-invalid="true" aria-describedby="deposit-proof-error" @endif>
-                            @error('payment_proof')<span class="deposit-field-error" id="deposit-proof-error">{{ $message }}</span>@enderror
-
-                            <div class="deposit-review-note"><i class="bi bi-shield-check" aria-hidden="true"></i><p>This request will remain <strong>Pending</strong> until an administrator verifies the transaction externally. Submitting does not add money to your recorded balance.</p></div>
-                            @if ($settings?->instructions)
-                                <div class="deposit-instructions"><strong>Payment instructions</strong><p>{{ $settings->instructions }}</p></div>
-                            @endif
-                            <button class="portal-button deposit-submit" type="submit"><i class="bi bi-send" aria-hidden="true"></i> Submit Deposit</button>
-                        </form>
-                    @else
-                        <p class="deposit-muted">The request form will be available after payment details are configured.</p>
-                    @endif
-                </section>
-            </div>
+                <a class="deposit-first-history-link" href="{{ route('wallet') }}#deposit-history"><i class="bi bi-clock-history" aria-hidden="true"></i> Deposit History</a>
+            </section>
         </main>
-
-        @include('partials.bottom-nav', ['active' => 'exchange', 'variant' => 'standard'])
+        @include('partials.bottom-nav', ['active' => 'wallet', 'variant' => 'standard'])
     </div>
+@endsection
+
+@section('scripts')
+    <script>
+        document.querySelectorAll('[data-deposit-submit]').forEach((form) => {
+            form.addEventListener('submit', () => {
+                const button = form.querySelector('button[type="submit"]');
+                if (button) {
+                    button.disabled = true;
+                    button.setAttribute('aria-busy', 'true');
+                    button.querySelector('[data-submit-label]').textContent = 'Creating request…';
+                }
+            });
+        });
+    </script>
 @endsection

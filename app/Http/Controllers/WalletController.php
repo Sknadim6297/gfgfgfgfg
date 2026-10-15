@@ -26,7 +26,8 @@ class WalletController extends Controller
             ->when($filters['search'] ?? null, function ($query, string $search): void {
                 $query->where(function ($query) use ($search): void {
                     $query->where('deposit_id', 'like', '%'.$search.'%')
-                        ->orWhere('transaction_reference', 'like', '%'.$search.'%');
+                        ->orWhere('transaction_reference', 'like', '%'.$search.'%')
+                        ->orWhere('transaction_hash', 'like', '%'.$search.'%');
                 });
             })
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))

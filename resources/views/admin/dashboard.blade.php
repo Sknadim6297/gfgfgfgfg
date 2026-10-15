@@ -20,8 +20,30 @@
     <section class="admin-stats" aria-label="All-time financial totals">
         <article class="admin-stat"><span class="admin-stat-label">Sell requests</span><strong>{{ \App\Support\Money::formatUsdt((string) $financialTotals['sell']->usdt) }} USDT</strong><small>{{ \App\Support\Money::formatInr((string) $financialTotals['sell']->inr) }} INR at saved request rates</small></article>
         <article class="admin-stat"><span class="admin-stat-label">Recorded customer wallet balances</span><strong>{{ \App\Support\Money::formatUsd((string) $customerBalances->usd_balance) }}</strong><small>{{ \App\Support\Money::formatInr((string) $customerBalances->inr_balance) }} INR · separate wallet balance</small></article>
-        <article class="admin-stat"><span class="admin-stat-label">Deposits · USD</span><strong>{{ \App\Support\Money::formatUsd((string) $financialTotals['deposits']->usd) }}</strong><small>All deposit requests, every status</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Approved deposits</span><strong>{{ \App\Support\Money::formatUsdt((string) $financialTotals['deposits']->usd) }} USDT</strong><small>Approved deposits only</small></article>
         <article class="admin-stat"><span class="admin-stat-label">Withdrawals · INR</span><strong>{{ \App\Support\Money::formatInr((string) $financialTotals['withdrawals']->inr) }}</strong><small>All withdrawal requests, every status</small></article>
+    </section>
+
+    <section class="admin-panel admin-section-gap">
+        <div class="admin-panel-heading"><div><span class="admin-eyebrow">DEPOSIT VERIFICATION</span><h2>Deposit summary</h2><p>Pending and rejected deposits are excluded from approved USDT totals.</p></div><a class="admin-button admin-button-secondary" href="{{ route('admin.deposits.index') }}">Manage deposits</a></div>
+        <section class="admin-stats admin-user-stats" aria-label="Deposit summary">
+            <article class="admin-stat"><span class="admin-stat-label">Total requests</span><strong>{{ number_format((int) $depositSummary->total_count) }}</strong></article>
+            <article class="admin-stat"><span class="admin-stat-label">Pending verification</span><strong>{{ number_format((int) $depositSummary->pending_count) }}</strong></article>
+            <article class="admin-stat"><span class="admin-stat-label">Approved</span><strong>{{ number_format((int) $depositSummary->approved_count) }}</strong></article>
+            <article class="admin-stat"><span class="admin-stat-label">Rejected</span><strong>{{ number_format((int) $depositSummary->rejected_count) }}</strong></article>
+            <article class="admin-stat"><span class="admin-stat-label">Approved USDT</span><strong>{{ \App\Support\Money::formatUsdt((string) $depositSummary->approved_usdt) }}</strong></article>
+        </section>
+        <div class="admin-activity-list">
+            @forelse ($recentDeposits as $deposit)
+                <article class="admin-activity-item">
+                    <span class="admin-activity-icon"><i class="bi bi-wallet2" aria-hidden="true"></i></span>
+                    <div class="admin-activity-copy"><strong><a class="admin-inline-link" href="{{ route('admin.deposits.show', $deposit) }}">{{ $deposit->deposit_id }}</a> · {{ $deposit->user->name }} ({{ $deposit->user->customer_id }})</strong><span>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT · {{ $deposit->network_name ?? 'Legacy' }} · {{ $deposit->created_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</span></div>
+                    <span class="portal-badge {{ $deposit->status }}">{{ ucfirst($deposit->status) }}</span>
+                </article>
+            @empty
+                <div class="admin-empty-state"><span><i class="bi bi-inbox" aria-hidden="true"></i></span><strong>No deposit requests yet</strong><p>New customer deposits will appear here.</p></div>
+            @endforelse
+        </div>
     </section>
 
     <section class="admin-panel">

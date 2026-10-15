@@ -1,6 +1,10 @@
 <?php
 
 return [
+    'bep20' => [
+        'usdt_contract_address' => env('BEP20_USDT_CONTRACT_ADDRESS'),
+    ],
+
 
     /*
     |--------------------------------------------------------------------------
