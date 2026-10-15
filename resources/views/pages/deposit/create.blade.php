@@ -45,7 +45,7 @@
                         @else
                             <span class="deposit-choice-logo deposit-choice-fallback" aria-hidden="true"><i class="bi bi-diagram-3"></i></span>
                         @endif
-                        <span class="deposit-network-choice-copy"><strong>BEP20</strong><small>BNB Smart Chain</small></span>
+                        <span class="deposit-network-choice-copy"><strong>BEP20</strong><small>USDT network</small></span>
                         <i class="bi bi-check-circle-fill deposit-network-selected" aria-label="Selected network"></i>
                     </div>
                 </div>
@@ -54,7 +54,7 @@
                     <div class="deposit-first-instructions">
                         <strong>Payment instructions</strong>
                         @if ($settings?->recipient_name)<span>{{ $settings->recipient_name }}</span>@endif
-                        @if ($settings?->instructions)<p>{{ $settings->instructions }}</p>@endif
+                        @if ($settings?->instructions)<p>{{ str_replace('BNB Smart Chain', 'BEP20', $settings->instructions) }}</p>@endif
                     </div>
                 @endif
 
@@ -69,7 +69,7 @@
                         </div>
                         <small class="deposit-field-hint" id="deposit-minimum-help">Minimum deposit: {{ \App\Support\Money::formatUsdt((string) $settings->minimum_amount) }} USDT · Up to 8 decimal places</small>
                         @error('amount')<span class="deposit-field-error" id="deposit-amount-error">{{ $message }}</span>@enderror
-                        <div class="deposit-network-warning"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><p>Only send USDT through BEP20 on BNB Smart Chain. Funds sent using another network or token may be permanently lost.</p></div>
+                        <div class="deposit-network-warning"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><p>Only send BEP20 USDT. Funds sent using another network or token may be permanently lost.</p></div>
                         <button class="deposit-gradient-button" type="submit"><span data-submit-label>Continue</span><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
                     </form>
                 @else

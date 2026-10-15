@@ -70,6 +70,11 @@ final class AdminAuditPresenter
         $value = is_scalar($value) ? (string) $value : '';
         $key = (string) $key;
         $normalizedEvent = strtolower($event);
+        $value = str_replace(
+            ['BNB Smart Chain mainnet (BEP20)', 'BNB Smart Chain mainnet', 'BNB Smart Chain'],
+            ['BEP20 mainnet', 'BEP20 mainnet', 'BEP20'],
+            $value
+        );
 
         if (! is_numeric($value)) {
             if (in_array($key, ['status', 'payout_method', 'action'], true)) {

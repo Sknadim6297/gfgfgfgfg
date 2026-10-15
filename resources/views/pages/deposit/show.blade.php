@@ -40,7 +40,7 @@
                         @else
                             <span class="deposit-choice-logo deposit-choice-fallback" aria-hidden="true"><i class="bi bi-diagram-3"></i></span>
                         @endif
-                        <span class="deposit-summary-network-copy"><small>Network</small><strong>{{ $deposit->network_name ?? 'Legacy deposit' }}</strong><small>{{ $deposit->blockchain }}</small></span>
+                        <span class="deposit-summary-network-copy"><small>Network</small><strong>{{ $deposit->network_name ?? ($deposit->blockchain === 'BNB Smart Chain' ? 'BEP20' : 'Legacy deposit') }}</strong></span>
                     </article>
                 </div>
 
@@ -108,13 +108,13 @@
                     </aside>
                     <aside class="deposit-info-card deposit-warning-card">
                         <h2><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> BEP20 Network Warning</h2>
-                        <p>Use USDT on BNB Smart Chain (BEP20) only. A transaction hash is a payment claim, not proof; an administrator must independently verify it during manual review before approval.</p>
+                        <p>Use BEP20 USDT only. A transaction hash is a payment claim, not proof; an administrator must independently verify it during manual review before approval.</p>
                     </aside>
                     @if ($deposit->recipient_name_snapshot || $deposit->instructions_snapshot)
                         <aside class="deposit-info-card deposit-admin-instructions">
                             <h2><i class="bi bi-card-text" aria-hidden="true"></i> Payment Instructions</h2>
                             @if ($deposit->recipient_name_snapshot)<p><strong>Recipient:</strong> {{ $deposit->recipient_name_snapshot }}</p>@endif
-                            @if ($deposit->instructions_snapshot)<p>{{ $deposit->instructions_snapshot }}</p>@endif
+                            @if ($deposit->instructions_snapshot)<p>{{ str_replace('BNB Smart Chain', 'BEP20', $deposit->instructions_snapshot) }}</p>@endif
                         </aside>
                     @endif
                 </div>

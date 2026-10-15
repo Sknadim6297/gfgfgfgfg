@@ -89,7 +89,7 @@ class AdminDepositSettingsController extends Controller
 
         if ($enabled && (! is_string($contractAddress) || ! hash_equals(strtolower(trim($trustedContractAddress)), strtolower($contractAddress)))) {
             throw ValidationException::withMessages([
-                'token_contract_address' => 'The token contract must match the server-configured BNB Smart Chain USDT contract.',
+                'token_contract_address' => 'The token contract must match the server-configured BEP20 USDT contract.',
             ]);
         }
 
@@ -119,7 +119,7 @@ class AdminDepositSettingsController extends Controller
             if (! is_string($receivingAddress) || trim($receivingAddress) === '') {
                 $errors['receiving_wallet_address'] = 'A receiving wallet address is required before deposits can be enabled.';
             } elseif (preg_match('/\A0x[a-fA-F0-9]{40}\z/', $receivingAddress) !== 1) {
-                $errors['receiving_wallet_address'] = 'Enter a valid BNB Smart Chain receiving wallet address before enabling deposits.';
+                $errors['receiving_wallet_address'] = 'Enter a valid BEP20 receiving wallet address before enabling deposits.';
             }
             if (! is_string($recipientName) || trim($recipientName) === '') {
                 $errors['recipient_name'] = 'A payment recipient name is required before deposits can be enabled.';

@@ -24,13 +24,13 @@
                 </select>
                 @error('network_name')<span class="admin-field-error">{{ $message }}</span>@enderror
 
-                <label for="blockchain">Blockchain</label>
-                <input class="portal-input" id="blockchain" name="blockchain" value="{{ old('blockchain', $settings?->blockchain ?? 'BNB Smart Chain') }}" readonly>
+                <label for="blockchain_display">Blockchain</label>
+                <input class="portal-input" id="blockchain_display" value="BEP20 mainnet" readonly>
 
                 <label for="token_contract_address">USDT token contract address</label>
                 <input class="portal-input" id="token_contract_address" name="token_contract_address" value="{{ old('token_contract_address', $settings?->token_contract_address) }}" maxlength="42" spellcheck="false" autocomplete="off">
                 @error('token_contract_address')<span class="admin-field-error">{{ $message }}</span>@enderror
-                <p class="admin-field-hint">Enter the BNB Smart Chain USDT contract address. To enable deposits, it must match the server's <code>BEP20_USDT_CONTRACT_ADDRESS</code> configuration. Address letter casing is ignored. Never use an unverified contract.</p>
+                <p class="admin-field-hint">Enter the BEP20 USDT contract address. To enable deposits, it must match the server's <code>BEP20_USDT_CONTRACT_ADDRESS</code> configuration. Address letter casing is ignored. Never use an unverified contract.</p>
 
                 <label for="receiving_wallet_address">Receiving wallet address</label>
                 <input class="portal-input" id="receiving_wallet_address" name="receiving_wallet_address" value="{{ old('receiving_wallet_address', $settings?->receiving_wallet_address) }}" maxlength="42" spellcheck="false" autocomplete="off">
@@ -45,7 +45,7 @@
                 @error('minimum_amount')<span class="admin-field-error">{{ $message }}</span>@enderror
 
                 <label for="instructions">Payment instructions</label>
-                <textarea class="portal-input" id="instructions" name="instructions" rows="6" maxlength="5000">{{ old('instructions', $settings?->instructions) }}</textarea>
+                <textarea class="portal-input" id="instructions" name="instructions" rows="6" maxlength="5000" data-instructions-raw="{{ base64_encode((string) old('instructions', $settings?->instructions)) }}">{{ str_replace('BNB Smart Chain', 'BEP20', old('instructions', $settings?->instructions)) }}</textarea>
                 @error('instructions')<span class="admin-field-error">{{ $message }}</span>@enderror
 
                 <label for="logo_image">Network logo <span>(PNG, JPG, or WebP; up to 4 MB)</span></label>
@@ -96,7 +96,7 @@
             <dl class="admin-detail-list">
                 <div><dt>QR code</dt><dd>{{ $qrImageAvailable ? 'Configured' : ($settings?->qr_path ? 'Unavailable' : 'Not configured') }}</dd></div>
                 <div><dt>Network logo</dt><dd>{{ $logoImageAvailable ? 'Configured' : ($settings?->logo_path ? 'Unavailable' : 'Not configured') }}</dd></div>
-                <div><dt>Network</dt><dd>{{ $settings?->network_name ?? 'BEP20' }} · {{ $settings?->blockchain ?? 'BNB Smart Chain' }}</dd></div>
+                <div><dt>Network</dt><dd>{{ $settings?->network_name ?? 'BEP20' }}</dd></div>
                 <div><dt>Contract Configuration</dt><dd>{{ $contractConfigurationConfigured ? 'Configured' : 'Missing' }}</dd></div>
                 <div><dt>Contract Verification</dt><dd>{{ ! $contractConfigurationConfigured || ! $contractConfigurationValid ? 'Not verifiable' : ($contractMatches ? 'Matched' : 'Mismatch') }}</dd></div>
                 <div><dt>Token contract</dt><dd>{{ $settings?->token_contract_address ?: 'Not provided' }}</dd></div>
@@ -130,6 +130,7 @@
         (() => {
             const form = document.getElementById('deposit-settings-form');
             const removeQr = form?.querySelector('[name="remove_qr"]');
+            const instructions = form?.querySelector('#instructions');
             if (!form || !removeQr) return;
 
             form.addEventListener('submit', () => {
@@ -143,6 +144,16 @@
                     delete form.dataset.confirmButton;
                 }
             });
+
+            if (instructions) {
+                const displayedInstructions = instructions.value;
+                form.addEventListener('submit', () => {
+                    if (instructions.value === displayedInstructions && (!form.dataset.confirm || form.dataset.confirmed === 'true')) {
+                        const rawBytes = Uint8Array.from(atob(instructions.dataset.instructionsRaw), (character) => character.charCodeAt(0));
+                        instructions.value = new TextDecoder().decode(rawBytes);
+                    }
+                });
+            }
         })();
     </script>
 @endsection

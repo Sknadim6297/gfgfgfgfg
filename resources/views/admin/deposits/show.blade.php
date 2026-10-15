@@ -9,7 +9,7 @@
             <div>
                 <span class="admin-eyebrow">PAYMENT OPERATIONS / MANUAL VERIFICATION</span>
                 <h1>Deposit <span class="admin-title-id">{{ $deposit->deposit_id }}</span></h1>
-                <p>Verify the payment externally on BNB Smart Chain. A customer-provided transaction hash is a claim only.</p>
+                <p>Verify the payment externally on BEP20. A customer-provided transaction hash is a claim only.</p>
             </div>
             <a class="admin-button admin-button-secondary" href="{{ route('admin.deposits.index') }}"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to deposits</a>
         </div>
@@ -35,7 +35,7 @@
                     <div><dt>Customer</dt><dd><a class="admin-inline-link" href="{{ route('admin.users.show', $deposit->user) }}">{{ $deposit->user->name }}</a><small>Customer ID {{ $deposit->user->customer_id }} · {{ $deposit->user->email }}</small></dd></div>
                     <div><dt>Requested amount</dt><dd>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT</dd></div>
                     <div><dt>Deposit status</dt><dd><span class="portal-badge {{ $deposit->status }}">{{ ucfirst($deposit->status) }}</span></dd></div>
-                    <div><dt>Network</dt><dd>{{ $deposit->network_name ?? 'Legacy deposit' }}@if($deposit->blockchain) · {{ $deposit->blockchain }}@endif</dd></div>
+                    <div><dt>Network</dt><dd>{{ $deposit->network_name ?? ($deposit->blockchain === 'BNB Smart Chain' ? 'BEP20' : 'Legacy deposit') }}</dd></div>
                     <div>
                         <dt>Token contract snapshot</dt>
                         <dd>
@@ -92,7 +92,7 @@
             </section>
 
             <section class="admin-panel admin-deposit-verification">
-                <div class="admin-panel-heading"><div><span class="admin-eyebrow">MANUAL REVIEW</span><h2>Verification checklist</h2><p>Verify the transaction directly on BNB Smart Chain mainnet. Do not rely on the customer’s claim alone.</p></div></div>
+                <div class="admin-panel-heading"><div><span class="admin-eyebrow">MANUAL REVIEW</span><h2>Verification checklist</h2><p>Verify the transaction directly on BEP20 mainnet. Do not rely on the customer’s claim alone.</p></div></div>
                 @if ($deposit->network_name === 'BEP20' && $deposit->status === 'pending')
                     <div class="admin-inline-notice"><i class="bi bi-shield-exclamation" aria-hidden="true"></i><p>Approval remains a manual attestation. The system does not query the blockchain or claim to verify the transaction automatically.</p></div>
                 @endif
@@ -111,7 +111,7 @@
                             @if ($deposit->network_name === 'BEP20')
                                 <div class="admin-deposit-field">
                                     <label for="verified_network">Manually verified network</label>
-                                    <select class="portal-input" id="verified_network" name="verified_network" data-verification-required><option value="BEP20" @selected(old('verified_network') === 'BEP20')>BNB Smart Chain mainnet · BEP20</option></select>
+                                    <select class="portal-input" id="verified_network" name="verified_network" data-verification-required><option value="BEP20" @selected(old('verified_network') === 'BEP20')>BEP20 mainnet</option></select>
                                     @error('verified_network')<span class="admin-field-error">{{ $message }}</span>@enderror
                                 </div>
                             @endif
@@ -153,7 +153,7 @@
                             <fieldset class="deposit-verification-checklist" data-bep20-verification>
                                 <legend>Confirm every item after manual verification</legend>
                                 @foreach ([
-                                    'network' => 'Transaction exists on BNB Smart Chain mainnet.',
+                                    'network' => 'Transaction exists on BEP20 mainnet.',
                                     'receipt' => 'Transaction receipt indicates success.',
                                     'contract' => 'USDT token contract matches the independently verified contract.',
                                     'recipient' => 'Transfer recipient matches the original receiving wallet snapshot.',
@@ -182,41 +182,14 @@
         </div>
 
         <section class="admin-panel admin-section-gap">
-            <div class="admin-panel-heading"><div><span class="admin-eyebrow">PAYMENT ASSETS</span><h2>Original Payment Assets</h2><p>Private image snapshots captured when this deposit request was created.</p></div></div>
-            <div class="admin-deposit-assets">
-                @if ($depositImages['logo'])
-                    <article class="admin-deposit-asset-card">
-                        <h3>Network Logo</h3>
-                        <a class="admin-deposit-logo-preview" href="{{ route('admin.deposits.image', [$deposit, 'logo']) }}" target="_blank" rel="noopener noreferrer" aria-label="View original network logo snapshot">
-                            <img src="{{ route('admin.deposits.image', [$deposit, 'logo']) }}" alt="BEP20 network logo snapshot">
-                        </a>
-                        <a class="admin-deposit-original-link" href="{{ route('admin.deposits.image', [$deposit, 'logo']) }}" target="_blank" rel="noopener noreferrer">View original logo <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
-                    </article>
-                @endif
-                @if ($depositImages['qr'])
-                    <article class="admin-deposit-asset-card">
-                        <h3>Payment QR Code</h3>
-                        <a class="admin-deposit-qr-preview" href="{{ route('admin.deposits.image', [$deposit, 'qr']) }}" target="_blank" rel="noopener noreferrer" aria-label="View full original payment QR snapshot">
-                            <img src="{{ route('admin.deposits.image', [$deposit, 'qr']) }}" alt="Original receiving wallet QR code">
-                        </a>
-                        <a class="admin-deposit-original-link" href="{{ route('admin.deposits.image', [$deposit, 'qr']) }}" target="_blank" rel="noopener noreferrer">View full QR <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
-                    </article>
-                @endif
-                @unless ($depositImages['logo'] || $depositImages['qr'])
-                    <div class="admin-empty-state"><span><i class="bi bi-images" aria-hidden="true"></i></span><strong>No original payment assets</strong><p>This request has no available logo or QR snapshot.</p></div>
-                @endunless
-            </div>
-        </section>
-
-        <section class="admin-panel admin-section-gap">
-            <div class="admin-panel-heading"><div><span class="admin-eyebrow">ORIGINAL PAYMENT SETTINGS</span><h2>Request snapshot</h2><p>These are the settings saved when the deposit request was created.</p></div></div>
+            <div class="admin-panel-heading"><div><span class="admin-eyebrow">PAYMENT SETTINGS SNAPSHOT</span><h2>Request snapshot</h2><p>These are the settings saved when the deposit request was created.</p></div></div>
             <dl class="admin-detail-list admin-deposit-snapshot">
-                <div><dt>Network</dt><dd>{{ $deposit->network_name ?? 'Not stored for legacy request' }} @if($deposit->blockchain)· {{ $deposit->blockchain }}@endif</dd></div>
+                <div><dt>Network</dt><dd>{{ $deposit->network_name ?? ($deposit->blockchain === 'BNB Smart Chain' ? 'BEP20' : 'Not stored for legacy request') }}</dd></div>
                 <div><dt>Token</dt><dd>{{ $deposit->token_symbol ?? 'Not stored for legacy request' }}</dd></div>
                 <div><dt>Contract</dt><dd class="admin-deposit-break">{{ $deposit->token_contract_address ?? 'Not stored for legacy request' }}</dd></div>
                 <div><dt>Receiving wallet</dt><dd class="admin-deposit-break">{{ $deposit->receiving_wallet_address ?? 'Not stored for legacy request' }}</dd></div>
                 <div><dt>Minimum at request time</dt><dd>{{ $deposit->minimum_amount_snapshot ? \App\Support\Money::formatUsdt((string) $deposit->minimum_amount_snapshot).' USDT' : 'Not stored for legacy request' }}</dd></div>
-                <div><dt>Instructions</dt><dd>{{ $deposit->instructions_snapshot ?? 'Not stored for legacy request' }}</dd></div>
+                <div><dt>Instructions</dt><dd>{{ $deposit->instructions_snapshot ? str_replace('BNB Smart Chain', 'BEP20', $deposit->instructions_snapshot) : 'Not stored for legacy request' }}</dd></div>
             </dl>
         </section>
 

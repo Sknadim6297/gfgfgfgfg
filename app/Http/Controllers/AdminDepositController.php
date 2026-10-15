@@ -74,10 +74,6 @@ class AdminDepositController extends Controller
             'audit' => $audit,
             'transactionHashSubmittedAt' => $audit->firstWhere('event', 'deposit.transaction_hash_submitted')?->created_at,
             'ledgerEntry' => BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->first(),
-            'depositImages' => [
-                'logo' => $this->snapshotAvailable($deposit->network_logo_path, 'logo'),
-                'qr' => $this->snapshotAvailable($deposit->qr_snapshot_path, 'qr'),
-            ],
         ]);
     }
 

@@ -143,7 +143,7 @@ class DepositManagementTest extends TestCase
                 'receiving_wallet_address' => '0x'.str_repeat('b', 40),
                 'recipient_name' => 'Quick PayMoney',
                 'minimum_amount' => '5.00000000',
-                'instructions' => 'Send only USDT using BEP20.',
+                'instructions' => 'Send only USDT using BNB Smart Chain.',
                 'is_enabled' => '1',
                 'logo_image' => UploadedFile::fake()->image('network.png'),
                 'qr_image' => UploadedFile::fake()->image('deposit-qr.png'),
@@ -162,7 +162,9 @@ class DepositManagementTest extends TestCase
             ->assertSee('Deposit Status')
             ->assertSee('Enabled')
             ->assertSee('Quick PayMoney')
-            ->assertSee('Send only USDT using BEP20.');
+            ->assertSee('Send only USDT using BEP20.')
+            ->assertDontSee('BNB Smart Chain');
+        $this->assertSame('Send only USDT using BNB Smart Chain.', DepositSettings::findOrFail(1)->instructions);
     }
 
     public function test_admin_can_remove_network_logo_and_qr_images_without_enabling_deposits(): void
@@ -315,7 +317,8 @@ class DepositManagementTest extends TestCase
             ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.deposit-settings.edit'))
             ->assertOk()
-            ->assertSee('BNB Smart Chain')
+            ->assertSee('BEP20')
+            ->assertDontSee('BNB Smart Chain')
             ->assertSee('Contract Configuration')
             ->assertSee('Contract Verification')
             ->assertSee('Deposit Status')
@@ -663,11 +666,19 @@ class DepositManagementTest extends TestCase
     {
         Storage::fake('local');
         $settings = $this->configureQr();
+        $settings->update(['instructions' => 'Send using BNB Smart Chain only.']);
         $owner = User::factory()->create();
         $other = User::factory()->create();
         $deposit = $this->createCustomerDeposit($owner, '25.00');
         $logoSnapshot = $deposit->network_logo_path;
         $qrSnapshot = $deposit->qr_snapshot_path;
+
+        $this->actingAs($owner, 'web')
+            ->get(route('deposit.create'))
+            ->assertOk()
+            ->assertSee('BEP20')
+            ->assertSee('Send using BEP20 only.')
+            ->assertDontSee('BNB Smart Chain');
 
         Storage::disk('local')->delete($settings->logo_path);
         Storage::disk('local')->delete($settings->qr_path);
@@ -682,9 +693,11 @@ class DepositManagementTest extends TestCase
             ->assertOk()
             ->assertSee($deposit->receiving_wallet_address)
             ->assertSee('Quick PayMoney')
-            ->assertSee('Pay and keep your transaction reference.')
+            ->assertSee('Send using BEP20 only.')
+            ->assertDontSee('BNB Smart Chain')
             ->assertDontSee('A changed recipient')
             ->assertDontSee('New instructions should not replace the saved snapshot.');
+        $this->assertSame('Send using BNB Smart Chain only.', $deposit->fresh()->instructions_snapshot);
         Storage::disk('local')->assertExists($logoSnapshot);
         Storage::disk('local')->assertExists($qrSnapshot);
         $this->get(route('deposits.image', [$deposit, 'logo']))->assertOk();
@@ -1059,6 +1072,7 @@ class DepositManagementTest extends TestCase
         $metadata = [
             'amount' => '20000.00',
             'transaction_reference' => '<script>alert(1)</script>',
+            'network' => 'BNB Smart Chain mainnet (BEP20)',
             'rejection_reason' => null,
         ];
         $submission = AuditLog::create([
@@ -1083,6 +1097,8 @@ class DepositManagementTest extends TestCase
             ->assertSee('Customer')
             ->assertSee('$20,000.00')
             ->assertSee('Transaction Reference')
+            ->assertSee('BEP20 mainnet')
+            ->assertDontSee('BNB Smart Chain')
             ->assertSee('Ledger Credit')
             ->assertSee('Recorded')
             ->assertSee(e($customer->name), false)
@@ -1095,7 +1111,7 @@ class DepositManagementTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'admin.deposit_approved']);
     }
 
-    public function test_admin_deposit_review_renders_bounded_private_asset_previews_and_copyable_payment_values(): void
+    public function test_admin_deposit_review_hides_payment_assets_without_deleting_snapshots_or_disabling_private_routes(): void
     {
         Storage::fake('local');
         Storage::disk('local')->put('deposits/snapshots/review-logo.png', 'logo image');
@@ -1106,6 +1122,7 @@ class DepositManagementTest extends TestCase
         $deposit->update([
             'network_name' => 'BEP20',
             'blockchain' => 'BNB Smart Chain',
+            'instructions_snapshot' => 'Use USDT on BNB Smart Chain only.',
             'token_contract_address' => '0x'.str_repeat('a', 40),
             'receiving_wallet_address' => '0x'.str_repeat('b', 40),
             'transaction_hash' => $txId,
@@ -1117,22 +1134,31 @@ class DepositManagementTest extends TestCase
             ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.deposits.show', $deposit))
             ->assertOk()
-            ->assertSee('Original Payment Assets')
-            ->assertSee('Network Logo')
-            ->assertSee('Payment QR Code')
-            ->assertSee('View full QR')
-            ->assertSee('admin-deposit-logo-preview', false)
-            ->assertSee('admin-deposit-qr-preview', false)
+            ->assertDontSee('PAYMENT ASSETS')
+            ->assertDontSee('Original Payment Assets')
+            ->assertDontSee('Network Logo')
+            ->assertDontSee('Payment QR Code')
+            ->assertDontSee('View original logo')
+            ->assertDontSee('View full QR')
+            ->assertDontSee('admin-deposit-logo-preview', false)
+            ->assertDontSee('admin-deposit-qr-preview', false)
             ->assertSee('data-copy-value="'.$deposit->deposit_id.'"', false)
             ->assertSee('data-copy-value="'.$deposit->token_contract_address.'"', false)
             ->assertSee('data-copy-value="'.$deposit->receiving_wallet_address.'"', false)
             ->assertSee('data-copy-value="'.$txId.'"', false)
             ->assertSee('https://bscscan.com/tx/'.$txId)
-            ->assertSee('BNB Smart Chain mainnet · BEP20', false)
+            ->assertSee('BEP20 mainnet')
+            ->assertSee('Use USDT on BEP20 only.')
+            ->assertDontSee('BNB Smart Chain')
             ->assertSee('Rejection reason')
             ->assertSee('Wallet ledger status');
 
         $this->assertDoesNotMatchRegularExpression('/<input[^>]*type="checkbox"[^>]*checked/i', $response->getContent());
+        $this->assertSame('deposits/snapshots/review-logo.png', $deposit->fresh()->network_logo_path);
+        $this->assertSame('deposits/snapshots/review-qr.png', $deposit->fresh()->qr_snapshot_path);
+        $this->assertSame('Use USDT on BNB Smart Chain only.', $deposit->fresh()->instructions_snapshot);
+        Storage::disk('local')->assertExists($deposit->network_logo_path);
+        Storage::disk('local')->assertExists($deposit->qr_snapshot_path);
         $this->get(route('admin.deposits.image', [$deposit, 'logo']))->assertOk();
         $this->get(route('admin.deposits.image', [$deposit, 'qr']))->assertOk();
     }
