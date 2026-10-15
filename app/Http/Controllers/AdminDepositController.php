@@ -208,10 +208,9 @@ class AdminDepositController extends Controller
 
     private function validateBep20Verification(Deposit $deposit, array $validated, int $adminId): array
     {
-        if (! is_string($deposit->transaction_hash)
-            || preg_match('/\A0x[a-fA-F0-9]{64}\z/', $deposit->transaction_hash) !== 1) {
+        if (! is_string($deposit->transaction_hash) || trim($deposit->transaction_hash) === '') {
             throw ValidationException::withMessages([
-                'transaction_hash' => 'A valid customer-submitted transaction hash is required before approval.',
+                'transaction_hash' => 'A customer-submitted transaction ID is required before approval.',
             ]);
         }
 

@@ -185,16 +185,16 @@ class DepositController extends Controller
         Gate::authorize('view', $deposit);
         $validated = $request->validate([
             'submission_key' => ['required', 'uuid'],
-            'transaction_hash' => ['required', 'string', 'regex:/\A0x[a-fA-F0-9]{64}\z/'],
+            'transaction_hash' => ['required', 'string', 'max:66'],
         ]);
         abort_unless(hash_equals((string) $deposit->submission_key, $validated['submission_key']), 422, 'This deposit submission token is invalid.');
-        $hash = strtolower($validated['transaction_hash']);
+        $hash = $validated['transaction_hash'];
 
         try {
             DB::transaction(function () use ($request, $deposit, $hash): void {
                 $locked = Deposit::query()->whereKey($deposit->id)->lockForUpdate()->firstOrFail();
                 if ($locked->status !== 'pending') {
-                    abort(422, 'A transaction hash cannot be submitted for a resolved deposit.');
+                    abort(422, 'A transaction ID cannot be submitted for a resolved deposit.');
                 }
 
                 if ($locked->transaction_hash !== null) {
@@ -203,13 +203,13 @@ class DepositController extends Controller
                     }
 
                     throw ValidationException::withMessages([
-                        'transaction_hash' => 'A transaction hash has already been submitted for this deposit.',
+                        'transaction_hash' => 'A transaction ID has already been submitted for this deposit.',
                     ]);
                 }
 
                 if (Deposit::query()->where('transaction_hash', $hash)->exists()) {
                     throw ValidationException::withMessages([
-                        'transaction_hash' => 'This transaction hash has already been claimed for another deposit.',
+                        'transaction_hash' => 'This transaction ID has already been claimed for another deposit.',
                     ]);
                 }
 
@@ -232,7 +232,7 @@ class DepositController extends Controller
             if ($this->isUniqueConstraintViolation($exception)
                 && Deposit::query()->where('transaction_hash', $hash)->where('id', '!=', $deposit->id)->exists()) {
                 throw ValidationException::withMessages([
-                    'transaction_hash' => 'This transaction hash has already been claimed for another deposit.',
+                    'transaction_hash' => 'This transaction ID has already been claimed for another deposit.',
                 ]);
             }
 
@@ -240,7 +240,7 @@ class DepositController extends Controller
         }
 
         return redirect()->route('deposits.show', $deposit)
-            ->with('status', 'Transaction hash submitted. It is a payment claim only and requires independent admin verification.');
+            ->with('status', 'Transaction ID submitted. It is a payment claim only and requires independent admin verification.');
     }
 
     public function networkLogo(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -294,7 +294,7 @@ class DepositController extends Controller
     private function submitted(Deposit $deposit): RedirectResponse
     {
         return redirect()->route('deposits.show', $deposit)
-            ->with('status', 'Your deposit request is ready. Send USDT only on BEP20, then submit the transaction hash for manual review.');
+            ->with('status', 'Your deposit request is ready. Send USDT only on BEP20, then submit the transaction ID for manual review.');
     }
 
     private function activeDepositSettings(?DepositSettings $settings): bool

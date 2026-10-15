@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class DepositManagementTest extends TestCase
@@ -413,7 +414,9 @@ class DepositManagementTest extends TestCase
         $this->actingAs($customer, 'web')
             ->get(route('deposit.create'))
             ->assertOk()
-            ->assertSee('Updated payment steps.')
+            ->assertDontSee('Payment instructions')
+            ->assertDontSee('Updated recipient')
+            ->assertDontSee('Updated payment steps.')
             ->assertSee('Continue')
             ->assertSee(route('deposit.network-logo'));
 
@@ -442,7 +445,9 @@ class DepositManagementTest extends TestCase
         $this->actingAs($customer, 'web')
             ->get(route('deposit.create'))
             ->assertOk()
-            ->assertSee('Saved payment instructions.')
+            ->assertDontSee('Payment instructions')
+            ->assertDontSee('Saved recipient')
+            ->assertDontSee('Saved payment instructions.')
             ->assertSee('BEP20 deposits are not available right now.')
             ->assertDontSee('Continue')
             ->assertDontSee(route('deposit.payment-qr'));
@@ -502,7 +507,7 @@ class DepositManagementTest extends TestCase
 
         $response = $this->post(route('deposit.store'), $payload)
             ->assertRedirect();
-        $response->assertSessionHas('status', 'Your deposit request is ready. Send USDT only on BEP20, then submit the transaction hash for manual review.');
+        $response->assertSessionHas('status', 'Your deposit request is ready. Send USDT only on BEP20, then submit the transaction ID for manual review.');
         $deposit = Deposit::where('user_id', $customer->id)->firstOrFail();
         $response->assertRedirect(route('deposits.show', $deposit));
         $this->assertSame('pending', $deposit->status);
@@ -609,7 +614,7 @@ class DepositManagementTest extends TestCase
         $this->assertSame(0, Deposit::query()->count());
     }
 
-    public function test_customer_tx_hash_is_validated_claimed_once_and_never_credits_the_wallet(): void
+    public function test_customer_txid_is_claimed_once_and_never_credits_the_wallet(): void
     {
         Storage::fake('local');
         $this->configureQr();
@@ -621,19 +626,27 @@ class DepositManagementTest extends TestCase
         $this->from(route('deposits.show', $first))
             ->post(route('deposits.transaction-hash.store', $first), [
                 'submission_key' => $first->submission_key,
-                'transaction_hash' => 'not-a-hash',
+                'transaction_hash' => '',
             ])
             ->assertSessionHasErrors('transaction_hash');
 
-        $hash = '0x'.str_repeat('A', 64);
+        $this->from(route('deposits.show', $first))
+            ->post(route('deposits.transaction-hash.store', $first), [
+                'submission_key' => $first->submission_key,
+                'transaction_hash' => 'test-123-abc',
+            ])
+            ->assertRedirect(route('deposits.show', $first));
+        $this->assertSame('test-123-abc', $first->fresh()->transaction_hash);
+
+        $hash = 'test-123-abc';
         $this->post(route('deposits.transaction-hash.store', $first), [
             'submission_key' => $first->submission_key,
             'transaction_hash' => $hash,
         ])
             ->assertRedirect(route('deposits.show', $first))
-            ->assertSessionHas('status', 'Transaction hash submitted. It is a payment claim only and requires independent admin verification.');
+            ->assertSessionHas('status', 'Transaction ID submitted. It is a payment claim only and requires independent admin verification.');
 
-        $this->assertSame(strtolower($hash), $first->fresh()->transaction_hash);
+        $this->assertSame($hash, $first->fresh()->transaction_hash);
         $this->assertSame('pending', $first->fresh()->status);
         $this->assertSame('12.00000000', $customer->fresh()->balance);
         $this->assertSame(0, BalanceLedgerEntry::query()->where('user_id', $customer->id)->count());
@@ -650,16 +663,48 @@ class DepositManagementTest extends TestCase
             ->assertOk()
             ->assertSee($first->deposit_id)
             ->assertSee($customer->name)
-            ->assertSee(strtolower($hash));
+            ->assertSee($hash);
 
         $this->from(route('deposits.show', $second))
             ->post(route('deposits.transaction-hash.store', $second), [
                 'submission_key' => $second->submission_key,
-                'transaction_hash' => strtolower($hash),
+                'transaction_hash' => $hash,
             ])
             ->assertSessionHasErrors('transaction_hash');
         $this->assertNull($second->fresh()->transaction_hash);
         $this->assertSame('Submitted', $first->fresh()->customerStatusLabel());
+    }
+
+    #[DataProvider('arbitraryTransactionIds')]
+    public function test_customer_can_submit_any_nonempty_transaction_id_without_normalization(string $transactionId): void
+    {
+        Storage::fake('local');
+        $this->configureQr();
+        $customer = User::factory()->create();
+        $deposit = $this->createCustomerDeposit($customer, '10.00');
+
+        $this->actingAs($customer, 'web')
+            ->post(route('deposits.transaction-hash.store', $deposit), [
+                'submission_key' => $deposit->submission_key,
+                'transaction_hash' => $transactionId,
+            ])
+            ->assertRedirect(route('deposits.show', $deposit));
+
+        $this->assertSame($transactionId, $deposit->fresh()->transaction_hash);
+        $this->assertSame('pending', $deposit->fresh()->status);
+    }
+
+    public static function arbitraryTransactionIds(): array
+    {
+        return [
+            'numeric' => ['123456'],
+            'alphabetic and numeric' => ['ABC123'],
+            'prefixed transaction' => ['TXN987654321'],
+            'short hex prefix' => ['0x12345'],
+            'payment reference' => ['PAYMENT123'],
+            'punctuated reference' => ['test-123-abc'],
+            'preserves surrounding whitespace' => [' test-123-abc '],
+        ];
     }
 
     public function test_customer_deposit_images_and_details_are_private_and_settings_snapshots_are_stable(): void
@@ -677,7 +722,8 @@ class DepositManagementTest extends TestCase
             ->get(route('deposit.create'))
             ->assertOk()
             ->assertSee('BEP20')
-            ->assertSee('Send using BEP20 only.')
+            ->assertDontSee('Payment instructions')
+            ->assertDontSee('Send using BEP20 only.')
             ->assertDontSee('BNB Smart Chain');
 
         Storage::disk('local')->delete($settings->logo_path);
@@ -693,7 +739,8 @@ class DepositManagementTest extends TestCase
             ->assertOk()
             ->assertSee($deposit->receiving_wallet_address)
             ->assertSee('Quick PayMoney')
-            ->assertSee('Send using BEP20 only.')
+            ->assertDontSee('Payment Instructions')
+            ->assertDontSee('Send using BEP20 only.')
             ->assertDontSee('BNB Smart Chain')
             ->assertDontSee('A changed recipient')
             ->assertDontSee('New instructions should not replace the saved snapshot.');
@@ -873,12 +920,12 @@ class DepositManagementTest extends TestCase
         $this->assertSame(0, BalanceLedgerEntry::query()->where('user_id', $customer->id)->count());
     }
 
-    public function test_valid_bep20_manual_approval_credits_once_and_records_verification_metadata(): void
+    public function test_bep20_manual_approval_accepts_arbitrary_txid_and_records_verification_metadata(): void
     {
         Storage::fake('local');
         $this->configureQr();
         $customer = User::factory()->create(['balance' => '1.25000000']);
-        $deposit = $this->createBep20Deposit($customer, '10.12345678', '0x'.str_repeat('e', 64));
+        $deposit = $this->createBep20Deposit($customer, '10.12345678', 'TXN987654321');
         $admin = $this->admin();
 
         $response = $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])

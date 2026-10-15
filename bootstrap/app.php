@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../app/Console/Commands',
     ])
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trimStrings(except: ['transaction_hash']);
         $middleware->alias([
             'active.account' => EnsureActiveAccount::class,
             'bank.verification' => EnsureBankVerificationPermission::class,

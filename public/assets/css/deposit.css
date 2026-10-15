@@ -870,34 +870,6 @@
     font-size: 21px;
 }
 
-.deposit-first-instructions {
-    display: grid;
-    gap: 4px;
-    margin-top: 14px;
-    padding: 13px 14px;
-    border: 1px solid #f0e3bc;
-    border-radius: 13px;
-    background: rgba(255, 255, 255, .5);
-    color: #66542e;
-}
-
-.deposit-first-instructions strong {
-    color: #6d5015;
-    font-size: 11px;
-}
-
-.deposit-first-instructions span {
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.deposit-first-instructions p {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.65;
-    white-space: pre-line;
-}
-
 .deposit-first-form {
     margin-top: 23px;
 }
@@ -1056,19 +1028,19 @@
 }
 
 .deposit-detail-heading .deposit-eyebrow {
-    color: #a27a24;
+    color: #ffd000;
 }
 
 .deposit-detail-heading h1 {
     margin: 4px 0;
-    color: #2b281f;
+    color: #fff;
     font-size: clamp(25px, 4vw, 32px);
     font-weight: 800;
 }
 
 .deposit-detail-heading p {
     margin: 0;
-    color: #777267;
+    color: #c7c7c7;
     font-size: 13px;
 }
 
@@ -1388,14 +1360,6 @@
     background: #fff8e5;
 }
 
-.deposit-admin-instructions {
-    grid-column: 1 / -1;
-}
-
-.deposit-admin-instructions p strong {
-    color: #55451f;
-}
-
 .deposit-reviewed-at {
     margin: 15px 0 0;
     color: #827a69;
@@ -1462,10 +1426,6 @@
     .deposit-summary-card {
         min-height: 76px;
         padding: 12px;
-    }
-
-    .deposit-admin-instructions {
-        grid-column: auto;
     }
 
     .deposit-qr-column {

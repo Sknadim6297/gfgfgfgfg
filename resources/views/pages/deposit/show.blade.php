@@ -93,7 +93,7 @@
                                 @csrf
                                 <input type="hidden" name="submission_key" value="{{ $deposit->submission_key }}">
                                 <label for="transaction_hash">Transaction ID (TxID)</label>
-                                <input class="portal-input deposit-monospace" id="transaction_hash" name="transaction_hash" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" maxlength="66" value="{{ old('transaction_hash') }}" aria-describedby="@if ($errors->has('transaction_hash')) transaction-hash-error @endif" required>
+                                <input class="portal-input deposit-monospace" id="transaction_hash" name="transaction_hash" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" value="{{ old('transaction_hash') }}" aria-describedby="@if ($errors->has('transaction_hash')) transaction-hash-error @endif" required>
                                 @error('transaction_hash')<span class="deposit-field-error" id="transaction-hash-error">{{ $message }}</span>@enderror
                                 <button class="deposit-gradient-button" type="submit"><span data-submit-label>Submit Transaction ID</span><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
                             </form>
@@ -110,13 +110,6 @@
                         <h2><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> BEP20 Network Warning</h2>
                         <p>Use BEP20 USDT only. A transaction hash is a payment claim, not proof; an administrator must independently verify it during manual review before approval.</p>
                     </aside>
-                    @if ($deposit->recipient_name_snapshot || $deposit->instructions_snapshot)
-                        <aside class="deposit-info-card deposit-admin-instructions">
-                            <h2><i class="bi bi-card-text" aria-hidden="true"></i> Payment Instructions</h2>
-                            @if ($deposit->recipient_name_snapshot)<p><strong>Recipient:</strong> {{ $deposit->recipient_name_snapshot }}</p>@endif
-                            @if ($deposit->instructions_snapshot)<p>{{ str_replace('BNB Smart Chain', 'BEP20', $deposit->instructions_snapshot) }}</p>@endif
-                        </aside>
-                    @endif
                 </div>
 
                 @if ($deposit->reviewed_at)

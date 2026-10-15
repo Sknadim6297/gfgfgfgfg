@@ -50,14 +50,6 @@
                     </div>
                 </div>
 
-                @if ($settings?->recipient_name || $settings?->instructions)
-                    <div class="deposit-first-instructions">
-                        <strong>Payment instructions</strong>
-                        @if ($settings?->recipient_name)<span>{{ $settings->recipient_name }}</span>@endif
-                        @if ($settings?->instructions)<p>{{ str_replace('BNB Smart Chain', 'BEP20', $settings->instructions) }}</p>@endif
-                    </div>
-                @endif
-
                 @if ($paymentSettingsAvailable)
                     <form class="deposit-first-form" method="POST" action="{{ route('deposit.store') }}" data-deposit-submit>
                         @csrf
