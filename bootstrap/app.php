@@ -3,7 +3,6 @@
 use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\EnsureAdminRole;
 use App\Http\Middleware\EnsureAdminSessionFresh;
-use App\Http\Middleware\EnsureAdminTwoFactor;
 use App\Http\Middleware\EnsureBankVerificationPermission;
 use App\Http\Middleware\EnsureImpersonationIsReadOnly;
 use App\Http\Middleware\IdempotentFinancialThrottle;
@@ -31,7 +30,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'bank.verification' => EnsureBankVerificationPermission::class,
             'admin.session' => EnsureAdminSessionFresh::class,
             'admin.role' => EnsureAdminRole::class,
-            'admin.2fa' => EnsureAdminTwoFactor::class,
             'impersonation.readonly' => EnsureImpersonationIsReadOnly::class,
             'member.notice-session' => PrepareMemberNoticeSession::class,
             'financial.throttle' => IdempotentFinancialThrottle::class,

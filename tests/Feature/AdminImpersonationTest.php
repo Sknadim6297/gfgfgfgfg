@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -80,13 +79,8 @@ class AdminImpersonationTest extends TestCase
     public function test_impersonation_requires_two_factor_admin_and_active_member_accounts(): void
     {
         $admin = $this->admin();
-        $member = User::factory()->create();
         $suspendedMember = User::factory()->create(['account_status' => 'suspended']);
         $otherAdmin = User::factory()->create(['role' => 'admin']);
-
-        $this->actingAs($admin, 'admin')
-            ->post(route('admin.users.impersonate', $member))
-            ->assertRedirect(route('admin.2fa.challenge'));
 
         $this->adminSession($admin)
             ->post(route('admin.users.impersonate', $suspendedMember))

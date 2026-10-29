@@ -168,7 +168,7 @@ class MemberNoticeTest extends TestCase
         $this->get(route('admin.notices.index'))->assertRedirect(route('admin.login'));
         $this->actingAs($member, 'web')->get(route('admin.notices.index'))->assertRedirect(route('admin.login'));
         $this->actingAs($member, 'web')->post(route('admin.notices.store'), [])->assertRedirect(route('admin.login'));
-        $this->actingAs($admin, 'admin')->get(route('admin.notices.index'))->assertRedirect(route('admin.2fa.challenge'));
+        $this->actingAs($admin, 'admin')->get(route('admin.notices.index'))->assertOk();
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.dashboard'))
             ->assertOk()

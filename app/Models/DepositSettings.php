@@ -62,9 +62,9 @@ class DepositSettings extends Model
             && $this->network_name === 'BEP20'
             && $this->blockchain === 'BNB Smart Chain'
             && is_string($trustedContractAddress)
-            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', $trustedContractAddress) === 1
+            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', trim($trustedContractAddress)) === 1
             && is_string($this->token_contract_address)
-            && hash_equals(strtolower($trustedContractAddress), strtolower($this->token_contract_address))
+            && hash_equals(strtolower(trim($trustedContractAddress)), strtolower($this->token_contract_address))
             && preg_match('/\A0x[a-fA-F0-9]{40}\z/', (string) $this->receiving_wallet_address) === 1
             && filled($this->recipient_name)
             && filled($this->instructions)

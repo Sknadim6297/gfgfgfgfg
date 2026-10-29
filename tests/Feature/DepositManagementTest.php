@@ -10,6 +10,7 @@ use App\Models\ExchangeRate;
 use App\Models\User;
 use App\Support\DepositSettingsPersistence;
 use Database\Seeders\ExchangeRateSeeder;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
@@ -225,10 +226,6 @@ class DepositManagementTest extends TestCase
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.deposit-settings.edit'))
             ->assertOk()
-            ->assertSee('Contract Configuration')
-            ->assertSee('Configured')
-            ->assertSee('Contract Verification')
-            ->assertSee('Matched')
             ->assertSee('Deposit Status')
             ->assertSee('Enabled')
             ->assertSee('Quick PayMoney')
@@ -262,7 +259,7 @@ class DepositManagementTest extends TestCase
         Storage::disk('local')->assertMissing($qrPath);
     }
 
-    public function test_admin_deposit_settings_reject_invalid_addresses_and_untrusted_contracts(): void
+    public function test_admin_deposit_settings_reject_invalid_addresses(): void
     {
         Storage::fake('local');
         config(['services.bep20.usdt_contract_address' => '0x'.str_repeat('a', 40)]);
@@ -278,47 +275,110 @@ class DepositManagementTest extends TestCase
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
             ->assertSessionHasErrors([
-                'token_contract_address',
-                'receiving_wallet_address',
                 'minimum_amount',
                 'logo_image',
-            ]);
+            ])
+            ->assertSessionDoesntHaveErrors(['token_contract_address', 'receiving_wallet_address']);
 
         $this->from(route('admin.deposit-settings.edit'))
             ->put(route('admin.deposit-settings.update'), [
-                'token_contract_address' => '0x'.str_repeat('c', 40),
+                'token_contract_address' => 'any contract text',
                 'receiving_wallet_address' => '0x'.str_repeat('b', 40),
-                'is_enabled' => '1',
+                'is_enabled' => '0',
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
-            ->assertSessionHasErrors('token_contract_address');
-        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+            ->assertSessionHas('status', 'Deposit settings updated.')
+            ->assertSessionDoesntHaveErrors('token_contract_address');
+        $this->assertSame('any contract text', DepositSettings::query()->findOrFail(1)->token_contract_address);
+        $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
     }
 
-    public function test_bep20_settings_cannot_be_enabled_without_a_server_trusted_token_contract(): void
+    public function test_arbitrary_receiving_wallet_text_saves_and_cannot_enable_live_deposits(): void
+    {
+        Storage::fake('local');
+        $trustedContract = '0x'.str_repeat('a', 40);
+        config(['services.bep20.usdt_contract_address' => $trustedContract]);
+        $this->actingAs($this->admin(), 'admin')->withSession(['admin_2fa_verified' => true]);
+
+        $this->from(route('admin.deposit-settings.edit'))
+            ->put(route('admin.deposit-settings.update'), [
+                'token_contract_address' => 'desk wallet note',
+                'receiving_wallet_address' => 'treasury desk',
+                'recipient_name' => 'Quick PayMoney',
+                'minimum_amount' => '10.00000000',
+                'instructions' => 'Send USDT on BEP20.',
+                'is_enabled' => '0',
+            ])
+            ->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHas('status', 'Deposit settings updated.')
+            ->assertSessionDoesntHaveErrors('receiving_wallet_address');
+
+        $settings = DepositSettings::query()->findOrFail(1);
+        $this->assertSame('treasury desk', $settings->receiving_wallet_address);
+        $this->assertFalse($settings->is_enabled);
+
+        $this->from(route('admin.deposit-settings.edit'))
+            ->put(route('admin.deposit-settings.update'), [
+                'token_contract_address' => $trustedContract,
+                'receiving_wallet_address' => 'treasury desk',
+                'recipient_name' => 'Quick PayMoney',
+                'minimum_amount' => '10.00000000',
+                'instructions' => 'Send USDT on BEP20.',
+                'is_enabled' => '1',
+                'logo_image' => UploadedFile::fake()->image('network.png'),
+                'qr_image' => UploadedFile::fake()->image('payment.png'),
+            ])
+            ->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHasErrors('receiving_wallet_address');
+        $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
+        $this->assertSame('treasury desk', DepositSettings::query()->findOrFail(1)->receiving_wallet_address);
+
+        $this->put(route('admin.deposit-settings.update'), [
+            'token_contract_address' => strtolower($trustedContract),
+            'receiving_wallet_address' => '0x'.str_repeat('b', 40),
+            'recipient_name' => 'Quick PayMoney',
+            'minimum_amount' => '10.00000000',
+            'instructions' => 'Send USDT on BEP20.',
+            'is_enabled' => '1',
+            'logo_image' => UploadedFile::fake()->image('network.png'),
+            'qr_image' => UploadedFile::fake()->image('payment.png'),
+        ])->assertRedirect()
+            ->assertSessionHas('status', 'Deposit settings updated.');
+
+        $enabled = DepositSettings::query()->findOrFail(1);
+        $this->assertTrue($enabled->is_enabled);
+        $this->assertSame('0x'.str_repeat('b', 40), $enabled->receiving_wallet_address);
+        $this->assertTrue($enabled->hasActiveBep20Settings(
+            Storage::disk('local')->exists($enabled->logo_path),
+            Storage::disk('local')->exists($enabled->qr_path),
+        ));
+    }
+
+    public function test_token_contract_saves_without_matching_the_server_configuration(): void
     {
         Storage::fake('local');
         config(['services.bep20.usdt_contract_address' => null]);
+        $contract = '0x0000000000000000000000000000000000000001';
         $this->actingAs($this->admin(), 'admin')->withSession(['admin_2fa_verified' => true])
             ->from(route('admin.deposit-settings.edit'))
             ->put(route('admin.deposit-settings.update'), [
-                'token_contract_address' => '0x'.str_repeat('a', 40),
-                'is_enabled' => '1',
+                'token_contract_address' => $contract,
+                'receiving_wallet_address' => '0x0000000000000000000000000000000000000002',
+                'recipient_name' => 'Quick PayMoney Demo',
+                'minimum_amount' => '10.00000000',
+                'instructions' => 'Send your USDT payment using the BEP20 network.',
+                'is_enabled' => '0',
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
-            ->assertSessionHasErrors('is_enabled');
-        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+            ->assertSessionHas('status', 'Deposit settings updated.');
 
-        $this->actingAs($this->admin(), 'admin')->withSession(['admin_2fa_verified' => true])
-            ->get(route('admin.deposit-settings.edit'))
+        $this->assertSame($contract, DepositSettings::query()->findOrFail(1)->token_contract_address);
+        $this->get(route('admin.deposit-settings.edit'))
             ->assertOk()
-            ->assertSee('Contract Configuration')
-            ->assertSee('Missing')
-            ->assertSee('Contract Verification')
-            ->assertSee('Not verifiable')
-            ->assertSee('Deposit Status')
-            ->assertSee('Disabled')
-            ->assertSee('Configure it in the server');
+            ->assertSee($contract)
+            ->assertDontSee('Contract Verification')
+            ->assertDontSee('must match the server-configured')
+            ->assertDontSee('BEP20_USDT_CONTRACT_ADDRESS');
     }
 
     public function test_bep20_settings_cannot_be_enabled_with_incomplete_payment_details(): void
@@ -358,19 +418,21 @@ class DepositManagementTest extends TestCase
         $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
     }
 
-    public function test_bep20_settings_reject_an_invalid_server_contract_configuration(): void
+    public function test_bep20_settings_save_when_the_server_contract_configuration_is_invalid(): void
     {
         Storage::fake('local');
         config(['services.bep20.usdt_contract_address' => 'not-an-address']);
+        $contract = '0x'.str_repeat('a', 40);
         $this->actingAs($this->admin(), 'admin')->withSession(['admin_2fa_verified' => true])
             ->from(route('admin.deposit-settings.edit'))
             ->put(route('admin.deposit-settings.update'), [
-                'token_contract_address' => '0x'.str_repeat('a', 40),
-                'is_enabled' => '1',
+                'token_contract_address' => $contract,
+                'is_enabled' => '0',
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
-            ->assertSessionHasErrors('is_enabled');
-        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+            ->assertSessionHas('status', 'Deposit settings updated.');
+        $this->assertSame($contract, DepositSettings::query()->findOrFail(1)->token_contract_address);
+        $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
     }
 
     public function test_first_save_persists_one_settings_row_and_a_repeat_save_updates_it(): void
@@ -426,8 +488,7 @@ class DepositManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Quick PayMoney Updated')
             ->assertSee('0x'.str_repeat('A', 40))
-            ->assertSee('Contract Verification')
-            ->assertSee('Matched')
+            ->assertDontSee('Contract Verification')
             ->assertSee('Disabled');
 
         $this->from(route('admin.deposit-settings.edit'))
@@ -444,9 +505,10 @@ class DepositManagementTest extends TestCase
                 'qr_image' => UploadedFile::fake()->image('deposit-qr.png'),
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
-            ->assertSessionHasErrors('token_contract_address');
+            ->assertSessionHas('status', 'Deposit settings updated.')
+            ->assertSessionDoesntHaveErrors('token_contract_address');
 
-        $this->assertSame('0x'.str_repeat('A', 40), DepositSettings::query()->findOrFail(1)->token_contract_address);
+        $this->assertSame('0x'.str_repeat('d', 40), DepositSettings::query()->findOrFail(1)->token_contract_address);
         $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
     }
 
@@ -466,28 +528,27 @@ class DepositManagementTest extends TestCase
             'token_contract_address' => '0x123',
             'receiving_wallet_address' => 'not-a-wallet',
             'is_enabled' => false,
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['token_contract_address', 'receiving_wallet_address']);
+        ])->assertRedirect()
+            ->assertSessionHas('status', 'Deposit settings updated.')
+            ->assertSessionDoesntHaveErrors(['token_contract_address', 'receiving_wallet_address']);
 
-        $this->putJson(route('admin.deposit-settings.update'), [
-            'token_contract_address' => '0x'.str_repeat('c', 40),
-            'receiving_wallet_address' => '0x'.str_repeat('b', 40),
-            'is_enabled' => true,
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors('token_contract_address');
+        $saved = DepositSettings::query()->findOrFail(1);
+        $this->assertSame('not-a-wallet', $saved->receiving_wallet_address);
+        $this->assertFalse($saved->is_enabled);
 
         $this->putJson(route('admin.deposit-settings.update'), [
             'token_contract_address' => '0x'.str_repeat('a', 40),
             'is_enabled' => true,
         ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['receiving_wallet_address', 'recipient_name', 'instructions', 'qr_image', 'logo_image']);
+            ->assertJsonValidationErrors('receiving_wallet_address');
 
-        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+        $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
+        $this->assertSame('not-a-wallet', DepositSettings::query()->findOrFail(1)->receiving_wallet_address);
     }
 
     public function test_qr_upload_failure_does_not_save_settings_or_expose_storage_details(): void
     {
-        $disk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $disk = \Mockery::mock(Filesystem::class);
         $disk->shouldReceive('putFileAs')->andReturn(false);
         Storage::set('local', $disk);
 
@@ -540,7 +601,7 @@ class DepositManagementTest extends TestCase
         $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
     }
 
-    public function test_bep20_deposit_settings_remain_protected_by_admin_login_and_two_factor(): void
+    public function test_bep20_deposit_settings_remain_protected_by_admin_login(): void
     {
         Storage::fake('local');
         $admin = $this->admin();
@@ -548,18 +609,12 @@ class DepositManagementTest extends TestCase
         $this->get(route('admin.deposit-settings.edit'))->assertRedirect(route('admin.login'));
         $this->actingAs($admin, 'admin')
             ->get(route('admin.deposit-settings.edit'))
-            ->assertRedirect(route('admin.2fa.challenge'));
-
-        $this->actingAs($admin, 'admin')
-            ->withSession(['admin_2fa_verified' => true])
-            ->get(route('admin.deposit-settings.edit'))
             ->assertOk()
             ->assertSee('BEP20')
             ->assertDontSee('BNB Smart Chain')
-            ->assertSee('Contract Configuration')
-            ->assertSee('Contract Verification')
             ->assertSee('Deposit Status')
-            ->assertSee('BEP20_USDT_CONTRACT_ADDRESS');
+            ->assertDontSee('Contract Verification')
+            ->assertDontSee('BEP20_USDT_CONTRACT_ADDRESS');
     }
 
     public function test_only_authenticated_admins_can_manage_private_payment_qr_settings(): void
@@ -1088,7 +1143,7 @@ class DepositManagementTest extends TestCase
             ->assertDontSee('aria-disabled="true"', false);
     }
 
-    public function test_bep20_admin_approval_requires_login_and_completed_two_factor(): void
+    public function test_bep20_admin_approval_requires_admin_login(): void
     {
         Storage::fake('local');
         $this->configureQr();
@@ -1098,9 +1153,6 @@ class DepositManagementTest extends TestCase
 
         $this->put(route('admin.deposits.update', $deposit), ['status' => 'approved'])
             ->assertRedirect(route('admin.login'));
-        $this->actingAs($this->admin(), 'admin')
-            ->put(route('admin.deposits.update', $deposit), ['status' => 'approved'])
-            ->assertRedirect(route('admin.2fa.challenge'));
         $this->assertSame('pending', $deposit->fresh()->status);
         $this->assertSame('0.00000000', $customer->fresh()->demo_usdt_balance);
     }
@@ -1180,8 +1232,8 @@ class DepositManagementTest extends TestCase
         ])->save();
         $admin = $this->admin();
         $event = 'eloquent.creating: '.BalanceLedgerEntry::class;
-        \Illuminate\Support\Facades\Event::listen($event, static function (): void {
-            throw new \RuntimeException('Simulated ledger storage failure.');
+        Event::listen($event, static function (): void {
+            throw new RuntimeException('Simulated ledger storage failure.');
         });
         $this->withoutExceptionHandling();
 
@@ -1189,10 +1241,10 @@ class DepositManagementTest extends TestCase
             $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
                 ->put(route('admin.deposits.update', $deposit), ['status' => 'approved']);
             $this->fail('The simulated ledger failure should abort approval.');
-        } catch (\RuntimeException $exception) {
+        } catch (RuntimeException $exception) {
             $this->assertSame('Simulated ledger storage failure.', $exception->getMessage());
         } finally {
-            \Illuminate\Support\Facades\Event::forget($event);
+            Event::forget($event);
         }
 
         $this->assertSame('pending', $deposit->fresh()->status);

@@ -154,7 +154,7 @@ class SupportTicketsTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.support-tickets.index'))
-            ->assertRedirect(route('admin.2fa.challenge'));
+            ->assertOk();
 
         $this->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.support-tickets.index', [

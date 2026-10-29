@@ -30,7 +30,7 @@
                 <label for="token_contract_address">USDT token contract address</label>
                 <input class="portal-input" id="token_contract_address" name="token_contract_address" value="{{ old('token_contract_address', $settings?->token_contract_address) }}" maxlength="42" spellcheck="false" autocomplete="off">
                 @error('token_contract_address')<span class="admin-field-error">{{ $message }}</span>@enderror
-                <p class="admin-field-hint">Enter the BEP20 USDT contract address. To enable deposits, it must match the server's <code>BEP20_USDT_CONTRACT_ADDRESS</code> configuration. Address letter casing is ignored. Never use an unverified contract.</p>
+                <p class="admin-field-hint">Enter the BEP20 USDT contract address.</p>
 
                 <label for="receiving_wallet_address">Receiving wallet address</label>
                 <input class="portal-input" id="receiving_wallet_address" name="receiving_wallet_address" value="{{ old('receiving_wallet_address', $settings?->receiving_wallet_address) }}" maxlength="42" spellcheck="false" autocomplete="off">
@@ -76,13 +76,6 @@
                 @if (! $storageReady)
                     <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposit settings cannot be saved because the database is missing required columns. Apply pending migrations with <code>php artisan migrate --force</code>, then reload this page.</p></div>
                 @endif
-                @if (! $contractConfigurationConfigured)
-                    <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposits cannot be enabled because <code>BEP20_USDT_CONTRACT_ADDRESS</code> is missing from the server environment. Configure it in the server <code>.env</code>, then run <code>php artisan config:clear</code> (or rebuild the cache with <code>php artisan config:cache</code>). Leave deposits disabled until the contract is independently verified.</p></div>
-                @elseif (! $contractConfigurationValid)
-                    <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>The server's <code>BEP20_USDT_CONTRACT_ADDRESS</code> is present but is not a valid EVM address. Correct the configuration before enabling deposits.</p></div>
-                @elseif (! $contractMatches)
-                    <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>The saved token contract does not match the server-configured contract. Update the saved contract value; casing differences are accepted.</p></div>
-                @endif
                 <button class="admin-button" type="submit"><i class="bi bi-check2" aria-hidden="true"></i> Save deposit settings</button>
             </form>
             @if ($settings)
@@ -100,8 +93,6 @@
                 <div><dt>QR code</dt><dd>{{ $qrImageAvailable ? 'Configured' : ($settings?->qr_path ? 'Unavailable' : 'Not configured') }}</dd></div>
                 <div><dt>Network logo</dt><dd>{{ $logoImageAvailable ? 'Configured' : ($settings?->logo_path ? 'Unavailable' : 'Not configured') }}</dd></div>
                 <div><dt>Network</dt><dd>{{ $settings?->network_name ?? 'BEP20' }}</dd></div>
-                <div><dt>Contract Configuration</dt><dd>{{ $contractConfigurationConfigured ? 'Configured' : 'Missing' }}</dd></div>
-                <div><dt>Contract Verification</dt><dd>{{ ! $contractConfigurationConfigured || ! $contractConfigurationValid ? 'Not verifiable' : ($contractMatches ? 'Matched' : 'Mismatch') }}</dd></div>
                 <div><dt>Token contract</dt><dd>{{ $settings?->token_contract_address ?: 'Not provided' }}</dd></div>
                 <div><dt>Receiving wallet</dt><dd>{{ $settings?->receiving_wallet_address ?: 'Not provided' }}</dd></div>
                 <div><dt>Minimum deposit</dt><dd>{{ $settings?->minimum_amount ?? '0.00000000' }} USDT</dd></div>
@@ -111,8 +102,8 @@
                 <div><dt>Last updated by</dt><dd>{{ $settings?->updatedBy?->name ?? 'Not updated' }}</dd></div>
                 @if ($settings?->updated_at)<div><dt>Last updated</dt><dd>{{ $settings->updated_at->format('M j, Y · H:i') }}</dd></div>@endif
             </dl>
-            @unless ($contractConfigurationValid && $contractMatches && $qrImageAvailable && $logoImageAvailable && filled($settings?->receiving_wallet_address) && filled($settings?->recipient_name) && filled($settings?->instructions) && $settings?->minimum_amount > 0 && $settings?->is_enabled)
-                <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposits are {{ $settings?->is_enabled ? 'marked enabled but configuration is incomplete' : 'disabled' }}. To enable safely, configure and match the trusted server contract, valid receiving wallet, positive minimum, recipient, instructions, logo, and QR image.</p></div>
+            @unless ($qrImageAvailable && $logoImageAvailable && filled($settings?->token_contract_address) && filled($settings?->receiving_wallet_address) && filled($settings?->recipient_name) && filled($settings?->instructions) && $settings?->minimum_amount > 0 && $settings?->is_enabled)
+                <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposits are {{ $settings?->is_enabled ? 'marked enabled but configuration is incomplete' : 'disabled' }}. To enable, enter the token contract, receiving wallet, positive minimum, recipient, instructions, logo, and QR image.</p></div>
             @endunless
             <div class="admin-inline-notice"><i class="bi bi-lock" aria-hidden="true"></i><p>Images are stored privately. Never enter or upload wallet private keys or seed phrases. This phase does not verify blockchain transactions or approve deposits automatically.</p></div>
         </aside>

@@ -16,11 +16,6 @@
                 <button class="admin-button" type="submit"><i class="bi bi-check2" aria-hidden="true"></i> Save profile</button>
             </form>
         </section>
-        <section class="admin-panel">
-            <div class="admin-panel-heading"><div><span class="admin-eyebrow">SIGN-IN PROTECTION</span><h2>Two-factor authentication</h2></div></div>
-            <div class="admin-security-status"><span class="admin-security-check"><i class="bi bi-check2" aria-hidden="true"></i></span><div><strong>Enabled and required</strong><p>Admin routes require an authenticator code for each new sign-in.</p></div></div>
-            <div class="admin-security-detail"><i class="bi bi-fingerprint" aria-hidden="true"></i><span>One-time codes are replay-protected.</span></div>
-        </section>
     </div>
     <section class="admin-panel admin-section-gap">
         <div class="admin-panel-heading"><div><span class="admin-eyebrow">CREDENTIALS</span><h2>Change password</h2><p>Choose a unique password you do not use elsewhere.</p></div><i class="bi bi-key admin-panel-heading-icon" aria-hidden="true"></i></div>

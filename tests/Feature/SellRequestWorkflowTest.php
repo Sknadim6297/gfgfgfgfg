@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\BalanceLedgerEntry;
 use App\Models\ExchangeRate;
 use App\Models\ExchangeRequest;
@@ -10,13 +11,16 @@ use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
 use App\Models\User;
-use App\Services\SellRequestService;
+use App\Notifications\ExchangeStatusUpdated;
 use App\Services\ReferralCommissionService;
+use App\Services\SellRequestService;
 use Database\Seeders\ExchangeRateSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class SellRequestWorkflowTest extends TestCase
@@ -354,7 +358,7 @@ SQL);
     {
         $this->actingAs($this->admin(), 'admin')
             ->get(route('admin.exchanges.index'))
-            ->assertRedirect(route('admin.2fa.challenge'));
+            ->assertOk();
     }
 
     public function test_empty_sell_request_summary_displays_zero_amounts(): void
@@ -457,7 +461,7 @@ SQL);
             'actor_user_id' => null,
             'subject_user_id' => $customer->id,
         ]);
-        $this->assertSame(1, \App\Models\AuditLog::where('auditable_type', ExchangeRequest::class)
+        $this->assertSame(1, AuditLog::where('auditable_type', ExchangeRequest::class)
             ->where('auditable_id', $exchange->id)
             ->where('event', 'SELL_REQUEST_AUTO_COMPLETED')
             ->count());
@@ -483,7 +487,7 @@ SQL);
         $this->assertSame(1, BalanceLedgerEntry::where('source_id', $exchange->id)->where('entry_type', 'debit')->count());
         $this->assertSame(1, InrLedgerEntry::where('source_id', $exchange->id)->where('entry_type', 'credit')->count());
         $notification = $customer->notifications()
-            ->where('type', \App\Notifications\ExchangeStatusUpdated::class)
+            ->where('type', ExchangeStatusUpdated::class)
             ->sole();
         $this->assertSame('completed', $notification->data['status']);
 
@@ -535,7 +539,7 @@ SQL);
                 'wallet_transaction_pin' => '1234',
             ]);
             $this->fail('The forced INR ledger failure should abort the conversion.');
-        } catch (\Illuminate\Database\QueryException $exception) {
+        } catch (QueryException $exception) {
             $this->assertStringContainsString('forced sell INR ledger failure', $exception->getMessage());
         } finally {
             DB::unprepared('DROP TRIGGER IF EXISTS fail_sell_inr_credit');
@@ -686,7 +690,7 @@ SQL);
         string $amount,
         string $quoteToken,
         string $transactionPin = '1234',
-    ): \Illuminate\Testing\TestResponse {
+    ): TestResponse {
         return $this->post(route('exchange.requests.store'), [
             'submission_key' => $submissionKey,
             'quote_token' => $quoteToken,

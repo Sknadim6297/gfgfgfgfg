@@ -30,7 +30,7 @@ class AdminPushNotificationTest extends TestCase
         $admin = $this->admin(['totp_enabled' => false]);
         $this->actingAs($admin, 'admin')
             ->get(route('admin.push-notifications.index'))
-            ->assertRedirect(route('admin.2fa.setup'));
+            ->assertOk();
     }
 
     public function test_authorized_admin_can_view_form_and_campaign_history(): void

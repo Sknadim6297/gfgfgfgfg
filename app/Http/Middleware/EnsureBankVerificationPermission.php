@@ -14,9 +14,7 @@ class EnsureBankVerificationPermission
 
         abort_unless(
             $admin?->role === 'admin'
-            && $admin->account_status === 'active'
-            && $admin->totp_enabled
-            && $request->session()->get('admin_2fa_verified') === true,
+            && $admin->account_status === 'active',
             403,
         );
 

@@ -789,23 +789,19 @@ class AuthenticationAndPortalTest extends TestCase
             ->assertSee('Signed out successfully.');
     }
 
-    public function test_admin_two_factor_completion_redirects_to_admin_dashboard_not_stale_user_intended_url(): void
+    public function test_admin_login_redirects_to_admin_dashboard_not_stale_user_intended_url(): void
     {
-        $secret = Totp::generateSecret();
         $admin = User::factory()->create([
             'role' => 'admin',
             'totp_enabled' => true,
-            'totp_secret' => $secret,
+            'totp_secret' => Totp::generateSecret(),
         ]);
 
         $this->withSession(['url.intended' => route('dashboard')])
             ->post(route('admin.login.store'), [
                 'email' => $admin->email,
                 'password' => 'password',
-            ])->assertRedirect(route('admin.2fa.challenge'));
-
-        $this->post(route('admin.2fa.verify'), ['code' => $this->totpCode($secret)])
-            ->assertRedirect(route('admin.dashboard'));
+            ])->assertRedirect(route('admin.dashboard'));
     }
 
     public function test_expired_password_reset_token_is_rejected(): void
@@ -860,7 +856,7 @@ class AuthenticationAndPortalTest extends TestCase
         $this->post(route('admin.login.store'), [
             'email' => $admin->email,
             'password' => 'SeederStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.setup'));
+        ])->assertRedirect(route('admin.dashboard'));
         $this->assertAuthenticatedAs($admin, 'admin');
     }
 
@@ -1031,7 +1027,7 @@ class AuthenticationAndPortalTest extends TestCase
         $this->post(route('admin.login.store'), [
             'email' => $admin->email,
             'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.setup'));
+        ])->assertRedirect(route('admin.dashboard'));
         $this->assertAuthenticatedAs($admin, 'admin');
         $this->assertGuest('web');
 
@@ -1066,155 +1062,36 @@ class AuthenticationAndPortalTest extends TestCase
         $this->assertFalse(Totp::verify($secret, '000000', 59));
     }
 
-    public function test_admin_login_requires_enrollment_and_second_factor_before_admin_routes(): void
+    public function test_admin_login_opens_the_dashboard_without_a_verification_code(): void
     {
         $admin = User::factory()->create([
             'email_verified_at' => now(),
             'role' => 'admin',
+            'account_status' => 'active',
             'password' => 'AdminStrong!Password123',
+            'totp_enabled' => true,
+            'totp_secret' => Totp::generateSecret(),
         ]);
-        $admin->forceFill(['totp_secret' => Totp::generateSecret()])->save();
 
         $this->post(route('admin.login.store'), [
             'email' => $admin->email,
             'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.setup'));
+        ])->assertRedirect(route('admin.dashboard'));
 
         $this->assertAuthenticatedAs($admin, 'admin');
-        $this->get(route('admin.dashboard'))->assertRedirect(route('admin.2fa.setup'));
-
-        $secret = $admin->fresh()->totp_secret;
-        $this->post(route('admin.2fa.enable'), ['code' => $this->totpCode($secret)])
-            ->assertRedirect(route('admin.dashboard'));
-        $this->get(route('admin.dashboard'))->assertOk()->assertSee('Administration overview');
+        $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Administration overview')
+            ->assertDontSee('Two-factor verification')
+            ->assertDontSee('Local development demo code');
+        $this->get('/admin/two-factor/challenge')->assertNotFound();
         $this->get(route('admin.login'))->assertRedirect(route('admin.dashboard'));
 
         $this->post(route('admin.logout'))->assertRedirect(route('admin.login'));
         $this->post(route('admin.login.store'), [
             'email' => $admin->email,
             'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.challenge'));
-        $this->post(route('admin.2fa.verify'), ['code' => $this->totpCode($secret)])
-            ->assertSessionHasErrors('code');
-    }
-
-    public function test_local_debug_admin_demo_code_completes_setup_and_challenge(): void
-    {
-        config([
-            'admin.2fa_demo' => true,
-            'app.env' => 'local',
-            'app.debug' => true,
-        ]);
-        $admin = User::factory()->create([
-            'role' => 'admin',
-            'account_status' => 'active',
-            'password' => 'AdminStrong!Password123',
-        ]);
-
-        $this->post(route('admin.login.store'), [
-            'email' => $admin->email,
-            'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.setup'));
-
-        $this->get(route('admin.2fa.setup'))
-            ->assertOk()
-            ->assertSee('Local development demo code (valid for 5 minutes):');
-        $setupCode = $this->app['session.store']->get('admin_2fa_demo_code');
-        $this->assertIsString($setupCode);
-        $this->assertMatchesRegularExpression('/^\d{6}$/', $setupCode);
-        $setupCodeExpiry = $this->app['session.store']->get('admin_2fa_demo_expires_at');
-        $this->travel(6)->minutes();
-        $this->post(route('admin.2fa.enable'), ['code' => $setupCode])
-            ->assertSessionHasErrors('code');
-        $this->get(route('admin.2fa.setup'))->assertOk();
-        $setupCode = $this->app['session.store']->get('admin_2fa_demo_code');
-        $this->assertGreaterThan($setupCodeExpiry, $this->app['session.store']->get('admin_2fa_demo_expires_at'));
-        $this->post(route('admin.2fa.enable'), ['code' => $setupCode])
-            ->assertRedirect(route('admin.dashboard'));
-        $this->assertTrue($admin->fresh()->totp_enabled);
-        $this->assertNotNull($admin->fresh()->totp_secret);
-
-        $this->post(route('admin.logout'))->assertRedirect(route('admin.login'));
-        $this->post(route('admin.login.store'), [
-            'email' => $admin->email,
-            'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.challenge'));
-
-        $this->get(route('admin.2fa.challenge'))
-            ->assertOk()
-            ->assertSee('Local development demo code (valid for 5 minutes):');
-        $challengeCode = $this->app['session.store']->get('admin_2fa_demo_code');
-        $this->assertIsString($challengeCode);
-        $this->assertMatchesRegularExpression('/^\d{6}$/', $challengeCode);
-        $this->post(route('admin.2fa.verify'), ['code' => $challengeCode])
-            ->assertRedirect(route('admin.dashboard'));
-        $this->assertNull($this->app['session.store']->get('admin_2fa_demo_code'));
-    }
-
-    public function test_production_never_displays_or_accepts_admin_demo_code_but_accepts_totp(): void
-    {
-        config([
-            'admin.2fa_demo' => true,
-            'app.env' => 'production',
-            'app.debug' => true,
-        ]);
-        $secret = Totp::generateSecret();
-        $admin = User::factory()->create([
-            'role' => 'admin',
-            'password' => 'AdminStrong!Password123',
-            'totp_enabled' => true,
-            'totp_secret' => $secret,
-        ]);
-
-        $this->post(route('admin.login.store'), [
-            'email' => $admin->email,
-            'password' => 'AdminStrong!Password123',
-        ])->assertRedirect(route('admin.2fa.challenge'));
-        $this->get(route('admin.2fa.challenge'))
-            ->assertOk()
-            ->assertDontSee('Local development demo code')
-            ->assertDontSee('admin_2fa_demo_code');
-        $this->assertNull($this->app['session.store']->get('admin_2fa_demo_code'));
-
-        $invalidCode = null;
-
-        for ($number = 0; $number < 1_000_000; $number++) {
-            $candidate = str_pad((string) $number, 6, '0', STR_PAD_LEFT);
-
-            if (! Totp::verify($secret, $candidate)) {
-                $invalidCode = $candidate;
-                break;
-            }
-        }
-
-        $this->assertNotNull($invalidCode);
-        $this->post(route('admin.2fa.verify'), ['code' => $invalidCode])
-            ->assertSessionHasErrors('code');
-        $this->post(route('admin.2fa.verify'), ['code' => $this->totpCode($secret)])
-            ->assertRedirect(route('admin.dashboard'));
-    }
-
-    public function test_local_admin_demo_code_is_disabled_when_debug_is_off(): void
-    {
-        config([
-            'admin.2fa_demo' => true,
-            'app.env' => 'local',
-            'app.debug' => false,
-        ]);
-        $secret = Totp::generateSecret();
-        $admin = User::factory()->create([
-            'role' => 'admin',
-            'account_status' => 'active',
-            'totp_secret' => $secret,
-        ]);
-
-        $this->actingAs($admin, 'admin')
-            ->get(route('admin.2fa.setup'))
-            ->assertOk()
-            ->assertDontSee('Local development demo code');
-        $this->assertNull($this->app['session.store']->get('admin_2fa_demo_code'));
-        $this->post(route('admin.2fa.enable'), ['code' => $this->totpCode($secret)])
-            ->assertRedirect(route('admin.dashboard'));
+        ])->assertRedirect(route('admin.dashboard'));
     }
 
     public function test_guest_admin_dashboard_redirects_to_admin_login(): void
@@ -1387,27 +1264,5 @@ class AuthenticationAndPortalTest extends TestCase
         $customer = User::factory()->create(['balance' => '0.00000000']);
         $this->actingAs($customer, 'web')->get(route('home'))->assertOk()->assertSee('90.12345678');
         $this->get(route('exchange'))->assertOk()->assertSee('90.12345678');
-    }
-
-    private function totpCode(string $secret): string
-    {
-        $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-        $bits = '';
-        foreach (str_split($secret) as $character) {
-            $bits .= str_pad(decbin(strpos($alphabet, $character)), 5, '0', STR_PAD_LEFT);
-        }
-        $key = '';
-        foreach (str_split($bits, 8) as $byte) {
-            if (strlen($byte) === 8) {
-                $key .= chr(bindec($byte));
-            }
-        }
-
-        $counter = intdiv(time(), 30);
-        $hash = hash_hmac('sha1', pack('N*', 0, $counter), $key, true);
-        $offset = ord($hash[19]) & 0x0F;
-        $number = unpack('N', substr($hash, $offset, 4))[1] & 0x7FFFFFFF;
-
-        return str_pad((string) ($number % 1_000_000), 6, '0', STR_PAD_LEFT);
     }
 }

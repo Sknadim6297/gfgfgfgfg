@@ -105,72 +105,65 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
     });
 
     Route::middleware(['auth:admin', 'admin.session', 'admin.role'])->group(function (): void {
-        Route::get('/two-factor/setup', [AdminAuthController::class, 'showSetup'])->name('2fa.setup');
-        Route::post('/two-factor/setup', [AdminAuthController::class, 'enableTwoFactor'])->middleware('route.throttle:6,1')->name('2fa.enable');
-        Route::get('/two-factor/challenge', [AdminAuthController::class, 'showChallenge'])->name('2fa.challenge');
-        Route::post('/two-factor/challenge', [AdminAuthController::class, 'verifyTwoFactor'])->middleware('route.throttle:6,1')->name('2fa.verify');
+        Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
+        Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
+        Route::get('/', AdminDashboardController::class);
+        Route::get('/profile', [AdminAuthController::class, 'profile'])->name('profile');
+        Route::put('/profile', [AdminAuthController::class, 'updateProfile'])->name('profile.update');
+        Route::put('/security/password', [AdminAuthController::class, 'changePassword'])->name('password.change');
 
-        Route::middleware('admin.2fa')->group(function (): void {
-            Route::post('/logout', [AdminAuthController::class, 'logout'])->name('logout');
-            Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
-            Route::get('/', AdminDashboardController::class);
-            Route::get('/profile', [AdminAuthController::class, 'profile'])->name('profile');
-            Route::put('/profile', [AdminAuthController::class, 'updateProfile'])->name('profile.update');
-            Route::put('/security/password', [AdminAuthController::class, 'changePassword'])->name('password.change');
+        Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
+        Route::get('/users/{user}', [AdminUserController::class, 'show'])->middleware('bank.verification')->name('users.show');
+        Route::post('/users/{user}/impersonate', [AdminUserController::class, 'impersonate'])->name('users.impersonate');
+        Route::post('/impersonation/stop', [AdminUserController::class, 'stopImpersonating'])->name('impersonation.stop');
+        Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+        Route::post('/users/{user}/bank-verification/verify', [AdminUserController::class, 'verifyBank'])->middleware('bank.verification')->name('users.bank.verify');
+        Route::post('/users/{user}/bank-verification/reject', [AdminUserController::class, 'rejectBank'])->middleware('bank.verification')->name('users.bank.reject');
 
-            Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
-            Route::get('/users/{user}', [AdminUserController::class, 'show'])->middleware('bank.verification')->name('users.show');
-            Route::post('/users/{user}/impersonate', [AdminUserController::class, 'impersonate'])->name('users.impersonate');
-            Route::post('/impersonation/stop', [AdminUserController::class, 'stopImpersonating'])->name('impersonation.stop');
-            Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
-            Route::post('/users/{user}/bank-verification/verify', [AdminUserController::class, 'verifyBank'])->middleware('bank.verification')->name('users.bank.verify');
-            Route::post('/users/{user}/bank-verification/reject', [AdminUserController::class, 'rejectBank'])->middleware('bank.verification')->name('users.bank.reject');
+        Route::get('/exchanges', [AdminExchangeController::class, 'index'])->name('exchanges.index');
+        Route::post('/exchanges/{exchangeRequest:request_reference}/reject', [AdminExchangeController::class, 'reject'])->name('exchanges.reject');
+        Route::get('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'show'])->name('exchanges.show');
+        Route::put('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'update'])->name('exchanges.update');
+        Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals.index');
+        Route::get('/withdrawals/{withdrawalRequest}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show');
+        Route::put('/withdrawals/{withdrawalRequest}', [AdminWithdrawalController::class, 'update'])->name('withdrawals.update');
+        Route::get('/support-tickets', [AdminSupportTicketController::class, 'index'])->name('support-tickets.index');
+        Route::get('/support-tickets/{ticket:ticket_number}', [AdminSupportTicketController::class, 'show'])->name('support-tickets.show');
+        Route::post('/support-tickets/{ticket:ticket_number}/messages', [AdminSupportTicketController::class, 'reply'])->middleware('route.throttle:20,1')->name('support-tickets.reply');
+        Route::put('/support-tickets/{ticket:ticket_number}', [AdminSupportTicketController::class, 'update'])->name('support-tickets.update');
+        Route::get('/push-notifications', [AdminPushNotificationController::class, 'index'])->name('push-notifications.index');
+        Route::get('/notices', [AdminMemberNoticeController::class, 'index'])->name('notices.index');
+        Route::get('/notices/create', [AdminMemberNoticeController::class, 'create'])->name('notices.create');
+        Route::post('/notices', [AdminMemberNoticeController::class, 'store'])->name('notices.store');
+        Route::get('/notices/{memberNotice}/edit', [AdminMemberNoticeController::class, 'edit'])->name('notices.edit');
+        Route::put('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'update'])->name('notices.update');
+        Route::patch('/notices/{memberNotice}/status', [AdminMemberNoticeController::class, 'updateStatus'])->name('notices.status');
+        Route::delete('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'destroy'])->name('notices.destroy');
+        Route::post('/push-notifications', [AdminPushNotificationController::class, 'store'])
+            ->middleware('route.throttle:10,1')
+            ->name('push-notifications.store');
 
-            Route::get('/exchanges', [AdminExchangeController::class, 'index'])->name('exchanges.index');
-            Route::post('/exchanges/{exchangeRequest:request_reference}/reject', [AdminExchangeController::class, 'reject'])->name('exchanges.reject');
-            Route::get('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'show'])->name('exchanges.show');
-            Route::put('/exchanges/{exchangeRequest:request_reference}', [AdminExchangeController::class, 'update'])->name('exchanges.update');
-            Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals.index');
-            Route::get('/withdrawals/{withdrawalRequest}', [AdminWithdrawalController::class, 'show'])->name('withdrawals.show');
-            Route::put('/withdrawals/{withdrawalRequest}', [AdminWithdrawalController::class, 'update'])->name('withdrawals.update');
-            Route::get('/support-tickets', [AdminSupportTicketController::class, 'index'])->name('support-tickets.index');
-            Route::get('/support-tickets/{ticket:ticket_number}', [AdminSupportTicketController::class, 'show'])->name('support-tickets.show');
-            Route::post('/support-tickets/{ticket:ticket_number}/messages', [AdminSupportTicketController::class, 'reply'])->middleware('route.throttle:20,1')->name('support-tickets.reply');
-            Route::put('/support-tickets/{ticket:ticket_number}', [AdminSupportTicketController::class, 'update'])->name('support-tickets.update');
-            Route::get('/push-notifications', [AdminPushNotificationController::class, 'index'])->name('push-notifications.index');
-            Route::get('/notices', [AdminMemberNoticeController::class, 'index'])->name('notices.index');
-            Route::get('/notices/create', [AdminMemberNoticeController::class, 'create'])->name('notices.create');
-            Route::post('/notices', [AdminMemberNoticeController::class, 'store'])->name('notices.store');
-            Route::get('/notices/{memberNotice}/edit', [AdminMemberNoticeController::class, 'edit'])->name('notices.edit');
-            Route::put('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'update'])->name('notices.update');
-            Route::patch('/notices/{memberNotice}/status', [AdminMemberNoticeController::class, 'updateStatus'])->name('notices.status');
-            Route::delete('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'destroy'])->name('notices.destroy');
-            Route::post('/push-notifications', [AdminPushNotificationController::class, 'store'])
-                ->middleware('route.throttle:10,1')
-                ->name('push-notifications.store');
+        Route::get('/referrals/settings', [AdminReferralController::class, 'settings'])->name('referrals.settings');
+        Route::put('/referrals/levels/{referralCommissionLevel}', [AdminReferralController::class, 'updateLevel'])->name('referrals.levels.update');
+        Route::patch('/referrals/levels/{referralCommissionLevel}/status', [AdminReferralController::class, 'updateLevelStatus'])->name('referrals.levels.status');
+        Route::get('/referrals/commissions', [AdminReferralController::class, 'report'])->name('referrals.commissions');
 
-            Route::get('/referrals/settings', [AdminReferralController::class, 'settings'])->name('referrals.settings');
-            Route::put('/referrals/levels/{referralCommissionLevel}', [AdminReferralController::class, 'updateLevel'])->name('referrals.levels.update');
-            Route::patch('/referrals/levels/{referralCommissionLevel}/status', [AdminReferralController::class, 'updateLevelStatus'])->name('referrals.levels.status');
-            Route::get('/referrals/commissions', [AdminReferralController::class, 'report'])->name('referrals.commissions');
+        Route::get('/rates', [AdminRateController::class, 'show'])->name('rates.edit');
+        Route::post('/rates', [AdminRateController::class, 'store'])->name('rates.store');
+        Route::put('/rates', [AdminRateController::class, 'update'])->name('rates.update');
+        Route::put('/rates/{exchangeRate}', [AdminRateController::class, 'updatePlan'])->name('rates.plans.update');
+        Route::patch('/rates/{exchangeRate}/status', [AdminRateController::class, 'toggleStatus'])->name('rates.plans.status');
+        Route::delete('/rates/{exchangeRate}', [AdminRateController::class, 'destroy'])->name('rates.plans.destroy');
 
-            Route::get('/rates', [AdminRateController::class, 'show'])->name('rates.edit');
-            Route::post('/rates', [AdminRateController::class, 'store'])->name('rates.store');
-            Route::put('/rates', [AdminRateController::class, 'update'])->name('rates.update');
-            Route::put('/rates/{exchangeRate}', [AdminRateController::class, 'updatePlan'])->name('rates.plans.update');
-            Route::patch('/rates/{exchangeRate}/status', [AdminRateController::class, 'toggleStatus'])->name('rates.plans.status');
-            Route::delete('/rates/{exchangeRate}', [AdminRateController::class, 'destroy'])->name('rates.plans.destroy');
-
-            Route::get('/deposit-settings', [AdminDepositSettingsController::class, 'edit'])->name('deposit-settings.edit');
-            Route::put('/deposit-settings', [AdminDepositSettingsController::class, 'update'])->name('deposit-settings.update');
-            Route::delete('/deposit-settings', [AdminDepositSettingsController::class, 'destroy'])->name('deposit-settings.destroy');
-            Route::get('/deposit-settings/qr', [AdminDepositSettingsController::class, 'qr'])->name('deposit-settings.qr');
-            Route::get('/deposit-settings/logo', [AdminDepositSettingsController::class, 'logo'])->name('deposit-settings.logo');
-            Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits.index');
-            Route::get('/deposits/{deposit}', [AdminDepositController::class, 'show'])->name('deposits.show');
-            Route::put('/deposits/{deposit}', [AdminDepositController::class, 'update'])->name('deposits.update');
-            Route::get('/deposits/{deposit}/images/{image}', [AdminDepositController::class, 'image'])->whereIn('image', ['logo', 'qr'])->name('deposits.image');
-            Route::get('/deposits/{deposit}/proof', [AdminDepositController::class, 'proof'])->name('deposits.proof');
-        });
+        Route::get('/deposit-settings', [AdminDepositSettingsController::class, 'edit'])->name('deposit-settings.edit');
+        Route::put('/deposit-settings', [AdminDepositSettingsController::class, 'update'])->name('deposit-settings.update');
+        Route::delete('/deposit-settings', [AdminDepositSettingsController::class, 'destroy'])->name('deposit-settings.destroy');
+        Route::get('/deposit-settings/qr', [AdminDepositSettingsController::class, 'qr'])->name('deposit-settings.qr');
+        Route::get('/deposit-settings/logo', [AdminDepositSettingsController::class, 'logo'])->name('deposit-settings.logo');
+        Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits.index');
+        Route::get('/deposits/{deposit}', [AdminDepositController::class, 'show'])->name('deposits.show');
+        Route::put('/deposits/{deposit}', [AdminDepositController::class, 'update'])->name('deposits.update');
+        Route::get('/deposits/{deposit}/images/{image}', [AdminDepositController::class, 'image'])->whereIn('image', ['logo', 'qr'])->name('deposits.image');
+        Route::get('/deposits/{deposit}/proof', [AdminDepositController::class, 'proof'])->name('deposits.proof');
     });
 });

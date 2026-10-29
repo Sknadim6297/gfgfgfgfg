@@ -32,7 +32,7 @@
     </div>
     <section class="admin-panel admin-section-gap">
         <div class="admin-panel-heading">
-            <div><span class="admin-eyebrow">PAYOUT INFORMATION / BANK VERIFICATION</span><h2>Bank details</h2><p>Full account details are visible only to active, two-factor verified administrators.</p></div>
+            <div><span class="admin-eyebrow">PAYOUT INFORMATION / BANK VERIFICATION</span><h2>Bank details</h2><p>Full account details are visible only to active administrators.</p></div>
             <span class="portal-badge {{ $bankVerificationStatus === 'not_submitted' || $bankVerificationStatus === 'data_error' ? 'inactive' : $bankVerificationStatus }}"><span class="admin-badge-dot"></span>{{ str($bankVerificationStatus)->replace('_', ' ')->title() }}</span>
         </div>
         @if ($bankDetailsAvailable)

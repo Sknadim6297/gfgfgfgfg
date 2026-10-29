@@ -141,9 +141,7 @@ class BankVerificationTest extends TestCase
         $this->post(route('admin.users.bank.verify', $customer))
             ->assertRedirect(route('admin.login'));
         $this->actingAs($admin, 'admin')
-            ->post(route('admin.users.bank.verify', $customer))
-            ->assertRedirect(route('admin.2fa.challenge'));
-        $this->withSession(['admin_2fa_verified' => true])
+            ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.users.show', $customer))
             ->assertOk()
             ->assertSee('Pending')
@@ -181,8 +179,8 @@ class BankVerificationTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.users.show', $customer))
-            ->assertRedirect(route('admin.2fa.challenge'))
-            ->assertDontSee('123456789012');
+            ->assertOk()
+            ->assertSee('123456789012');
 
         auth('admin')->logout();
         $this->actingAs(User::factory()->create(), 'web')
@@ -205,11 +203,7 @@ class BankVerificationTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin, 'admin')
-            ->post(route('admin.users.bank.verify', $customer))
-            ->assertRedirect(route('admin.2fa.challenge'));
-        $this->assertSame('pending', $customer->fresh()->bankVerificationStatus());
-
-        $this->withSession(['admin_2fa_verified' => true])
+            ->withSession(['admin_2fa_verified' => true])
             ->post(route('admin.users.bank.reject', $customer), [
                 'reason' => 'Submitted account details could not be verified.',
             ])

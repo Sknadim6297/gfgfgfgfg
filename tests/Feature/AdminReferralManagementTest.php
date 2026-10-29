@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\InrLedgerEntry;
 use App\Models\ExchangeRequest;
+use App\Models\InrLedgerEntry;
 use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\ReferralQualification;
@@ -26,9 +26,9 @@ class AdminReferralManagementTest extends TestCase
         $admin = $this->admin();
         $this->actingAs($admin, 'admin')
             ->get(route('admin.referrals.settings'))
-            ->assertRedirect(route('admin.2fa.challenge'));
+            ->assertOk();
         $this->get(route('admin.referrals.commissions'))
-            ->assertRedirect(route('admin.2fa.challenge'));
+            ->assertOk();
 
         $customer = User::factory()->create();
         $this->actingAs($customer, 'admin')

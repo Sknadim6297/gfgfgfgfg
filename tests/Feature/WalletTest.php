@@ -489,7 +489,8 @@ class WalletTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.withdrawals.index'))
-            ->assertRedirect(route('admin.2fa.challenge'));
+            ->assertOk()
+            ->assertSee('WDR-ADMIN-1');
 
         $this->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.withdrawals.index'))

@@ -16,5 +16,5 @@
         <div class="admin-auth-form-row"><a href="{{ route('admin.password.request') }}">Forgot password?</a></div>
         <button class="admin-auth-submit" type="submit">Continue securely <i class="bi bi-arrow-right" aria-hidden="true"></i></button>
     </form>
-    <p class="admin-auth-note"><i class="bi bi-shield-check" aria-hidden="true"></i> Two-factor verification is required after sign-in.</p>
+    <p class="admin-auth-note"><i class="bi bi-shield-check" aria-hidden="true"></i> Administrator accounts only.</p>
 @endsection

@@ -26,23 +26,12 @@ class AdminDepositSettingsController extends Controller
     {
         $settings = DepositSettings::query()->find(1);
         $qrPath = $settings?->qr_path;
-        $trustedTokenContractAddress = config('services.bep20.usdt_contract_address');
-        $contractConfigurationConfigured = is_string($trustedTokenContractAddress) && trim($trustedTokenContractAddress) !== '';
-        $contractConfigurationValid = $contractConfigurationConfigured
-            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', trim($trustedTokenContractAddress)) === 1;
-        $contractMatches = $contractConfigurationValid
-            && is_string($settings?->token_contract_address)
-            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', $settings->token_contract_address) === 1
-            && hash_equals(strtolower(trim($trustedTokenContractAddress)), strtolower($settings->token_contract_address));
 
         return view('admin.deposits.settings', [
             'settings' => $settings,
             'qrImageAvailable' => DepositSettings::isManagedQrPath($qrPath) && Storage::disk('local')->exists($qrPath),
             'logoImageAvailable' => DepositSettings::isManagedLogoPath($settings?->logo_path)
                 && Storage::disk('local')->exists($settings->logo_path),
-            'contractConfigurationConfigured' => $contractConfigurationConfigured,
-            'contractConfigurationValid' => $contractConfigurationValid,
-            'contractMatches' => $contractMatches,
             'storageReady' => DepositSettingsPersistence::storageReady(),
             'history' => AuditLog::query()
                 ->whereIn('event', ['admin.deposit_settings_updated', 'admin.deposit_qr_updated', 'admin.deposit_settings_deleted'])
@@ -66,8 +55,8 @@ class AdminDepositSettingsController extends Controller
             'instructions' => ['nullable', 'string', 'max:5000'],
             'network_name' => ['nullable', 'string', 'in:BEP20'],
             'blockchain' => ['nullable', 'string', 'in:BNB Smart Chain'],
-            'token_contract_address' => ['nullable', 'string', 'regex:/\A0x[a-fA-F0-9]{40}\z/'],
-            'receiving_wallet_address' => ['nullable', 'string', 'regex:/\A0x[a-fA-F0-9]{40}\z/'],
+            'token_contract_address' => ['sometimes', 'nullable', 'string', 'max:42'],
+            'receiving_wallet_address' => ['nullable', 'string', 'max:42'],
             'minimum_amount' => ['sometimes', 'required', 'string', 'regex:/\A(?:0|[1-9]\d{0,11})(?:\.\d{1,8})?\z/'],
             'is_enabled' => ['nullable', 'boolean'],
             'logo_image' => ['nullable', 'file', 'image', 'mimes:png,jpg,jpeg,webp', 'max:4096'],
@@ -80,36 +69,19 @@ class AdminDepositSettingsController extends Controller
         $contractAddress = $request->exists('token_contract_address')
             ? ($validated['token_contract_address'] ?? null)
             : $settings?->token_contract_address;
-        $enabled = $request->exists('is_enabled')
+        $requestedEnable = $request->exists('is_enabled')
             ? (bool) $validated['is_enabled']
             : (bool) $settings?->is_enabled;
-        $trustedContractAddress = config('services.bep20.usdt_contract_address');
-        $trustedContractConfigured = is_string($trustedContractAddress) && trim($trustedContractAddress) !== '';
-        $trustedContractValid = $trustedContractConfigured
-            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', trim($trustedContractAddress)) === 1;
+        $enabled = $requestedEnable;
+        $receivingAddress = $request->exists('receiving_wallet_address')
+            ? ($validated['receiving_wallet_address'] ?? null)
+            : $settings?->receiving_wallet_address;
 
-        if ($enabled && ! $trustedContractConfigured) {
-            throw ValidationException::withMessages([
-                'is_enabled' => 'Configure and verify BEP20_USDT_CONTRACT_ADDRESS on the server before enabling deposits.',
-            ]);
-        }
-
-        if ($enabled && ! $trustedContractValid) {
-            throw ValidationException::withMessages([
-                'is_enabled' => 'The server BEP20_USDT_CONTRACT_ADDRESS is not a valid EVM address. Correct the server configuration before enabling deposits.',
-            ]);
-        }
-
-        if ($enabled && (! is_string($contractAddress) || ! hash_equals(strtolower(trim($trustedContractAddress)), strtolower($contractAddress)))) {
-            throw ValidationException::withMessages([
-                'token_contract_address' => 'The token contract must match the server-configured BEP20 USDT contract.',
-            ]);
+        if ($enabled && ! $this->tokenContractIsVerified($contractAddress)) {
+            $enabled = false;
         }
 
         if ($enabled) {
-            $receivingAddress = $request->exists('receiving_wallet_address')
-                ? $validated['receiving_wallet_address']
-                : $settings?->receiving_wallet_address;
             $instructions = $request->exists('instructions')
                 ? $validated['instructions']
                 : $settings?->instructions;
@@ -129,9 +101,7 @@ class AdminDepositSettingsController extends Controller
                     && Storage::disk('local')->exists($settings->logo_path));
             $errors = [];
 
-            if (! is_string($receivingAddress) || trim($receivingAddress) === '') {
-                $errors['receiving_wallet_address'] = 'A receiving wallet address is required before deposits can be enabled.';
-            } elseif (preg_match('/\A0x[a-fA-F0-9]{40}\z/', $receivingAddress) !== 1) {
+            if (! is_string($receivingAddress) || preg_match('/\A0x[a-fA-F0-9]{40}\z/', $receivingAddress) !== 1) {
                 $errors['receiving_wallet_address'] = 'Enter a valid BEP20 receiving wallet address before enabling deposits.';
             }
             if (! is_string($recipientName) || trim($recipientName) === '') {
@@ -187,7 +157,7 @@ class AdminDepositSettingsController extends Controller
                 }
             }
 
-            DB::transaction(function () use ($request, $validated, $newQrPath, $newLogoPath, &$oldQrPath, &$oldLogoPath, &$imagesChanged, &$settings): void {
+            DB::transaction(function () use ($request, $validated, $enabled, $newQrPath, $newLogoPath, &$oldQrPath, &$oldLogoPath, &$imagesChanged, &$settings): void {
                 $settings = DepositSettings::query()->lockForUpdate()->find(1);
                 $creating = ! $settings;
                 if (! $settings) {
@@ -234,9 +204,7 @@ class AdminDepositSettingsController extends Controller
                     'minimum_amount' => $request->exists('minimum_amount')
                         ? $this->normalizeAmount($validated['minimum_amount'])
                         : ($settings->minimum_amount ?? '0.00000000'),
-                    'is_enabled' => $request->exists('is_enabled')
-                        ? (bool) $validated['is_enabled']
-                        : (bool) $settings->is_enabled,
+                    'is_enabled' => $enabled,
                     'updated_by_user_id' => $request->user('admin')->id,
                     'qr_path' => $request->boolean('remove_qr')
                         ? null
@@ -479,6 +447,17 @@ class AdminDepositSettingsController extends Controller
         if (! Storage::disk('local')->delete($path)) {
             throw new RuntimeException('The deposit image could not be removed.');
         }
+    }
+
+    private function tokenContractIsVerified(mixed $contractAddress): bool
+    {
+        $trustedContractAddress = config('services.bep20.usdt_contract_address');
+
+        return is_string($trustedContractAddress)
+            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', trim($trustedContractAddress)) === 1
+            && is_string($contractAddress)
+            && preg_match('/\A0x[a-fA-F0-9]{40}\z/', $contractAddress) === 1
+            && hash_equals(strtolower(trim($trustedContractAddress)), strtolower($contractAddress));
     }
 
     private function normalizeAmount(string $amount): string
