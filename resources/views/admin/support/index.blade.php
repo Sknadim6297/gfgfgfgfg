@@ -8,7 +8,7 @@
     <p class="admin-summary-note">All-time ticket counts; filters only affect the list below.</p>
     <section class="admin-stats admin-user-stats" aria-label="All-time support ticket summary">
         <article class="admin-stat"><span class="admin-stat-label">All tickets</span><strong>{{ number_format((int) $summary->total_count) }}</strong><small>Every status</small></article>
-        <article class="admin-stat"><span class="admin-stat-label">Open / in progress</span><strong>{{ number_format((int) ($summary->active_count ?? 0)) }}</strong><small>Needs attention</small></article>
+        <article class="admin-stat"><span class="admin-stat-label">Active tickets</span><strong>{{ number_format((int) ($summary->active_count ?? 0)) }}</strong><small>Open, in progress, or awaiting member</small></article>
         <article class="admin-stat"><span class="admin-stat-label">Resolved</span><strong>{{ number_format((int) ($summary->resolved_count ?? 0)) }}</strong><small>All-time</small></article>
         <article class="admin-stat"><span class="admin-stat-label">Closed</span><strong>{{ number_format((int) ($summary->closed_count ?? 0)) }}</strong><small>All-time</small></article>
     </section>

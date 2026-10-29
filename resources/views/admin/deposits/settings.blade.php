@@ -73,6 +73,9 @@
                 @endif
                 <label><input type="hidden" name="is_enabled" value="0"><input type="checkbox" name="is_enabled" value="1" @checked((bool) old('is_enabled', $settings?->is_enabled))> Enable BEP20 deposits</label>
                 @error('is_enabled')<span class="admin-field-error">{{ $message }}</span>@enderror
+                @if (! $storageReady)
+                    <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposit settings cannot be saved because the database is missing required columns. Apply pending migrations with <code>php artisan migrate --force</code>, then reload this page.</p></div>
+                @endif
                 @if (! $contractConfigurationConfigured)
                     <div class="admin-inline-notice"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i><p>Deposits cannot be enabled because <code>BEP20_USDT_CONTRACT_ADDRESS</code> is missing from the server environment. Configure it in the server <code>.env</code>, then run <code>php artisan config:clear</code> (or rebuild the cache with <code>php artisan config:cache</code>). Leave deposits disabled until the contract is independently verified.</p></div>
                 @elseif (! $contractConfigurationValid)

@@ -4,6 +4,8 @@ use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminDepositController;
 use App\Http\Controllers\AdminDepositSettingsController;
+use App\Http\Controllers\AdminInternalTransferController;
+use App\Http\Controllers\AdminMemberNoticeController;
 use App\Http\Controllers\AdminExchangeController;
 use App\Http\Controllers\AdminPushNotificationController;
 use App\Http\Controllers\AdminRateController;
@@ -15,6 +17,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CustomerExchangeRequestController;
 use App\Http\Controllers\DepositController;
 use App\Http\Controllers\FcmDeviceTokenController;
+use App\Http\Controllers\InternalUsdtTransferController;
+use App\Http\Controllers\MemberNoticeController;
 use App\Http\Controllers\PublicPagesController;
 use App\Http\Controllers\SupportTicketController;
 use App\Http\Controllers\WalletController;
@@ -42,13 +46,16 @@ Route::middleware('guest:web')->group(function (): void {
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('route.throttle:5,1')->name('password.update');
 });
 
-Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly'])->group(function (): void {
+Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly', 'member.notice-session'])->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     Route::middleware('active.account')->group(function (): void {
         Route::get('/support/tickets/{ticket:ticket_number}', [SupportTicketController::class, 'show'])->name('support.tickets.show');
         Route::post('/support/tickets/{ticket:ticket_number}/messages', [SupportTicketController::class, 'reply'])->middleware('route.throttle:10,1')->name('support.tickets.reply');
         Route::get('/profile', [AuthController::class, 'profile'])->name('profile');
+        Route::get('/notices', [MemberNoticeController::class, 'index'])->name('notices.index');
+        Route::get('/notices/{memberNotice}', [MemberNoticeController::class, 'show'])->name('notices.show');
+        Route::post('/notices/{memberNotice}/dismiss', [MemberNoticeController::class, 'dismiss'])->middleware('route.throttle:30,1')->name('notices.dismiss');
         Route::post('/profile/notifications/device-tokens', [FcmDeviceTokenController::class, 'store'])
             ->middleware('route.throttle:10,1')
             ->name('profile.notifications.device-tokens.store');
@@ -70,6 +77,9 @@ Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly'])->group
         Route::put('/security/password', [AuthController::class, 'changePassword'])->middleware('route.throttle:6,1')->name('password.change');
         Route::get('/home', [PublicPagesController::class, 'home'])->name('home');
         Route::get('/wallet', WalletController::class)->name('wallet');
+        Route::get('/wallet/transfers', [InternalUsdtTransferController::class, 'index'])->name('wallet.transfers.index');
+        Route::post('/wallet/transfers/preview', [InternalUsdtTransferController::class, 'preview'])->middleware('route.throttle:20,10')->name('wallet.transfers.preview');
+        Route::post('/wallet/transfers', [InternalUsdtTransferController::class, 'store'])->middleware('financial.throttle:transfer,5,10')->name('wallet.transfers.store');
         Route::get('/exchange/sell', [CustomerExchangeRequestController::class, 'create'])->name('exchange.sell');
         Route::post('/exchange/requests/quote', [CustomerExchangeRequestController::class, 'quote'])->middleware('route.throttle:10,1')->name('exchange.requests.quote');
         Route::post('/exchange/requests', [CustomerExchangeRequestController::class, 'store'])->middleware('financial.throttle:sell,5,1')->name('exchange.requests.store');
@@ -133,6 +143,13 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
             Route::post('/support-tickets/{ticket:ticket_number}/messages', [AdminSupportTicketController::class, 'reply'])->middleware('route.throttle:20,1')->name('support-tickets.reply');
             Route::put('/support-tickets/{ticket:ticket_number}', [AdminSupportTicketController::class, 'update'])->name('support-tickets.update');
             Route::get('/push-notifications', [AdminPushNotificationController::class, 'index'])->name('push-notifications.index');
+            Route::get('/notices', [AdminMemberNoticeController::class, 'index'])->name('notices.index');
+            Route::get('/notices/create', [AdminMemberNoticeController::class, 'create'])->name('notices.create');
+            Route::post('/notices', [AdminMemberNoticeController::class, 'store'])->name('notices.store');
+            Route::get('/notices/{memberNotice}/edit', [AdminMemberNoticeController::class, 'edit'])->name('notices.edit');
+            Route::put('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'update'])->name('notices.update');
+            Route::patch('/notices/{memberNotice}/status', [AdminMemberNoticeController::class, 'updateStatus'])->name('notices.status');
+            Route::delete('/notices/{memberNotice}', [AdminMemberNoticeController::class, 'destroy'])->name('notices.destroy');
             Route::post('/push-notifications', [AdminPushNotificationController::class, 'store'])
                 ->middleware('route.throttle:10,1')
                 ->name('push-notifications.store');
@@ -149,6 +166,9 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
             Route::patch('/rates/{exchangeRate}/status', [AdminRateController::class, 'toggleStatus'])->name('rates.plans.status');
             Route::delete('/rates/{exchangeRate}', [AdminRateController::class, 'destroy'])->name('rates.plans.destroy');
 
+            Route::get('/internal-transfers', [AdminInternalTransferController::class, 'index'])->name('internal-transfers.index');
+            Route::get('/internal-transfers/settings', [AdminInternalTransferController::class, 'editSettings'])->name('internal-transfers.settings');
+            Route::put('/internal-transfers/settings', [AdminInternalTransferController::class, 'updateSettings'])->name('internal-transfers.settings.update');
             Route::get('/deposit-settings', [AdminDepositSettingsController::class, 'edit'])->name('deposit-settings.edit');
             Route::put('/deposit-settings', [AdminDepositSettingsController::class, 'update'])->name('deposit-settings.update');
             Route::delete('/deposit-settings', [AdminDepositSettingsController::class, 'destroy'])->name('deposit-settings.destroy');

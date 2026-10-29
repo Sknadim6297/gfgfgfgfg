@@ -37,6 +37,7 @@ class AdminDashboardController extends Controller
                     ->first(),
                 'deposits' => Deposit::query()
                     ->where('status', 'approved')
+                    ->where('is_demo', false)
                     ->selectRaw('COALESCE(ROUND(SUM(amount), 8), 0) as usd')
                     ->first(),
                 'withdrawals' => WithdrawalRequest::query()
@@ -48,7 +49,7 @@ class AdminDashboardController extends Controller
                 ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count', ['pending'])
                 ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as approved_count', ['approved'])
                 ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_count', ['rejected'])
-                ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 8), 0) as approved_usdt', ['approved'])
+                ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? AND is_demo = ? THEN amount ELSE 0 END), 8), 0) as approved_usdt', ['approved', false])
                 ->first(),
             'recentDeposits' => Deposit::query()->with('user:id,name,customer_id')->latest()->limit(5)->get(),
             'recentActivity' => AuditLog::with(['actor', 'subject'])->latest()->limit(8)->get(),

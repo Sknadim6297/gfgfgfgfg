@@ -74,6 +74,7 @@ class Deposit extends Model
         return [
             'amount' => 'decimal:8',
             'minimum_amount_snapshot' => 'decimal:8',
+            'is_demo' => 'boolean',
             'transaction_event_index' => 'integer',
             'blockchain_confirmations' => 'integer',
             'submitted_at' => 'datetime',
@@ -95,5 +96,10 @@ class Deposit extends Model
     public function ledgerEntries(): HasMany
     {
         return $this->hasMany(BalanceLedgerEntry::class);
+    }
+
+    public function demoLedgerEntries(): HasMany
+    {
+        return $this->hasMany(DemoUsdtLedgerEntry::class);
     }
 }

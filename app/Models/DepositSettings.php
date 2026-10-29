@@ -8,6 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DepositSettings extends Model
 {
+    /**
+     * Singleton primary key assigned by the application. The column is not AUTO_INCREMENT.
+     * MySQL and MariaDB return 0 from LAST_INSERT_ID() for that insert, which makes a reload look for the wrong row.
+     */
+    public $incrementing = false;
+
     protected $fillable = [
         'id',
         'qr_path',

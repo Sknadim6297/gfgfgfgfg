@@ -19,7 +19,7 @@ class SupportTicket extends Model
         'Other',
     ];
 
-    public const STATUSES = ['open', 'in_progress', 'resolved', 'closed'];
+    public const STATUSES = ['open', 'in_progress', 'awaiting_member', 'resolved', 'closed'];
 
     public const PRIORITIES = ['low', 'normal', 'high'];
 

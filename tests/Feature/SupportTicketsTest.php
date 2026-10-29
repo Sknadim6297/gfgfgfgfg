@@ -66,7 +66,7 @@ class SupportTicketsTest extends TestCase
         $ticket = SupportTicket::query()->firstOrFail();
         $this->assertSame($customer->id, $ticket->user_id);
         $this->assertSame('open', $ticket->status);
-        $this->assertSame('normal', $ticket->priority);
+        $this->assertSame('high', $ticket->priority);
         $this->assertNull($ticket->guest_email);
 
         auth('web')->logout();
@@ -129,6 +129,7 @@ class SupportTicketsTest extends TestCase
             'notifiable_id' => $customer->id,
             'type' => SupportTicketReplied::class,
         ]);
+        $this->assertSame('awaiting_member', $ticket->fresh()->status);
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
             'event' => 'admin.support_ticket_replied',
@@ -197,7 +198,7 @@ class SupportTicketsTest extends TestCase
             ->get(route('admin.support-tickets.index', ['status' => 'closed']))
             ->assertOk()
             ->assertSee('All-time ticket counts; filters only affect the list below.')
-            ->assertSee('All tickets')
+            ->assertSee('Active tickets')
             ->assertSee('4')
             ->assertSee('2')
             ->assertSee('1')
@@ -224,6 +225,61 @@ class SupportTicketsTest extends TestCase
             ->assertSee('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;', false)
             ->assertDontSee($message, false);
         $this->assertDatabaseCount('support_ticket_messages', 1);
+    }
+
+    public function test_member_reply_reopens_awaiting_ticket_and_admin_can_close_and_reopen(): void
+    {
+        $customer = User::factory()->create();
+        $other = User::factory()->create();
+        $admin = User::factory()->create(['role' => 'admin', 'totp_enabled' => true]);
+        $ticket = $this->ticketFor($customer, ['status' => 'awaiting_member']);
+
+        $this->actingAs($other, 'web')
+            ->post(route('support.tickets.reply', $ticket->ticket_number), ['message' => 'Not my ticket reply.'])
+            ->assertNotFound();
+
+        $this->actingAs($customer, 'web')
+            ->post(route('support.tickets.reply', $ticket->ticket_number), ['message' => 'I have answered the support question.'])
+            ->assertRedirect(route('support.tickets.show', $ticket->ticket_number));
+        $this->assertSame('open', $ticket->fresh()->status);
+
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
+            ->put(route('admin.support-tickets.update', $ticket->ticket_number), [
+                'status' => 'closed',
+                'priority' => 'normal',
+            ])->assertRedirect();
+        $this->assertSame('closed', $ticket->fresh()->status);
+
+        $this->post(route('admin.support-tickets.reply', $ticket->ticket_number), [
+            'message' => 'This should wait until the ticket is reopened.',
+        ])->assertSessionHasErrors('message');
+
+        $this->put(route('admin.support-tickets.update', $ticket->ticket_number), [
+            'status' => 'open',
+            'priority' => 'normal',
+        ])->assertRedirect();
+        $this->assertSame('open', $ticket->fresh()->status);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'admin.support_ticket_reopened']);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'admin.support_ticket_closed']);
+    }
+
+    public function test_member_can_choose_priority_but_cannot_set_ticket_status(): void
+    {
+        $customer = User::factory()->create();
+
+        $this->actingAs($customer, 'web')
+            ->post(route('support.tickets.store'), [
+                'subject' => 'Wallet transfer help',
+                'category' => 'Wallet',
+                'priority' => 'low',
+                'status' => 'closed',
+                'message' => 'Please explain an internal wallet transfer.',
+            ])->assertRedirect(route('contact'));
+
+        $ticket = SupportTicket::query()->firstOrFail();
+        $this->assertSame('low', $ticket->priority);
+        $this->assertSame('open', $ticket->status);
+        $this->assertSame($customer->id, $ticket->user_id);
     }
 
     private function ticketFor(User $customer, array $attributes = []): SupportTicket

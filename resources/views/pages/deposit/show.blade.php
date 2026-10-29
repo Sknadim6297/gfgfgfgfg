@@ -32,7 +32,7 @@
                 <div class="deposit-summary-cards">
                     <article class="deposit-summary-card">
                         <span><i class="bi bi-currency-dollar" aria-hidden="true"></i> Deposit Amount</span>
-                        <strong>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} <small>USDT</small></strong>
+                        <strong>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} <small>USDT{{ $deposit->is_demo ? ' (DEMO)' : '' }}</small></strong>
                     </article>
                     <article class="deposit-summary-card deposit-network-summary-card">
                         @if ($deposit->network_logo_path)
@@ -93,7 +93,7 @@
                                 @csrf
                                 <input type="hidden" name="submission_key" value="{{ $deposit->submission_key }}">
                                 <label for="transaction_hash">Transaction ID (TxID)</label>
-                                <input class="portal-input deposit-monospace" id="transaction_hash" name="transaction_hash" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="0x…" value="{{ old('transaction_hash') }}" aria-describedby="@if ($errors->has('transaction_hash')) transaction-hash-error @endif" required>
+                                <input class="portal-input deposit-monospace" id="transaction_hash" name="transaction_hash" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="Enter transaction ID" value="{{ old('transaction_hash') }}" aria-describedby="@if ($errors->has('transaction_hash')) transaction-hash-error @endif" required>
                                 @error('transaction_hash')<span class="deposit-field-error" id="transaction-hash-error">{{ $message }}</span>@enderror
                                 <button class="deposit-gradient-button" type="submit"><span data-submit-label>Submit Transaction ID</span><i class="bi bi-arrow-right" aria-hidden="true"></i></button>
                             </form>

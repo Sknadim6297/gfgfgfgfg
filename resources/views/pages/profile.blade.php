@@ -85,6 +85,9 @@
                 <a class="profile-menu-item" href="#wallet-transaction-pin" data-wallet-pin-open data-wallet-pin-purpose="{{ $user->hasWalletTransactionPin() ? 'wallet_password_change' : 'wallet_password_set' }}">
                     <span class="profile-menu-icon"><i class="bi bi-shield-lock" aria-hidden="true"></i></span><span>Wallet Transaction PIN</span><span class="profile-bank-status" data-pin-status>{{ $user->hasWalletTransactionPin() ? 'Active' : 'Not Set' }}</span><i class="bi bi-chevron-right" aria-hidden="true"></i>
                 </a>
+                <a class="profile-menu-item" href="{{ route('notices.index') }}">
+                    <span class="profile-menu-icon"><i class="bi bi-megaphone" aria-hidden="true"></i></span><span>Notices &amp; Announcements</span><i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </a>
                 <a class="profile-menu-item" href="{{ route('profile.referrals') }}">
                     <span class="profile-menu-icon"><i class="bi bi-people" aria-hidden="true"></i></span><span>Referrals</span><i class="bi bi-chevron-right" aria-hidden="true"></i>
                 </a>

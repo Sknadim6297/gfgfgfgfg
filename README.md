@@ -149,6 +149,13 @@ The automated tests use an isolated SQLite database. They do not require or modi
 - Set `APP_ENV=production`, `APP_DEBUG=false`, a generated `APP_KEY`, an HTTPS `APP_URL`, and production database/mail credentials using a secret manager or deployment environment.
 - Use MySQL, HTTPS, and secure cookies (`SESSION_SECURE_COOKIE=true`). Do not set `SESSION_SECURE_COOKIE=false` in production.
 - Set `ADMIN_2FA_DEMO=false` in production. Even if set to `true`, demo codes are guarded by local environment and debug checks.
+- Keep `DEPOSITS_DEMO_APPROVAL_ENABLED=false` unless one-click demo approvals are explicitly intended. Deposits default to non-demo, and only rows explicitly marked `is_demo` can credit the separate `demo_usdt_balance` and demo ledger. The demo balance is not used by exchange or withdrawal workflows. To explicitly classify a pending deposit in a controlled environment, use Tinker with its exact deposit ID, for example:
+
+  ```php
+  \App\Models\Deposit::where('deposit_id', 'DEP...')->where('status', 'pending')->update(['is_demo' => true]);
+  ```
+
+- Real deposit approvals require both an independent verification timestamp and a server-recorded `blockchain_verification_source`; a customer-submitted transaction ID or prior manual checklist is not independent verification. No independent blockchain-verification integration is currently configured, so real deposits remain unapprovable until that integration records verified evidence.
 - Never commit `.env`, database exports, credentials, private keys, logs, or user data. If a secret was committed previously, rotate it; removing it in a later commit does not remove it from Git history.
 - Restrict and monitor `/admin`, retain access to the configured authenticator, and establish an operational account recovery process.
 - Before enabling any real exchange, custody, payment, KYC/AML, or settlement functionality, obtain the required business rules, approvals, legal review, and verified integrations. Those capabilities are not implemented here.

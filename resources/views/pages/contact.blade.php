@@ -65,6 +65,16 @@
                     </div>
 
                     <div class="input-group-custom">
+                        <label class="visually-hidden" for="support-priority">Priority</label>
+                        <select class="form-control-custom" id="support-priority" name="priority">
+                            @foreach (\App\Models\SupportTicket::PRIORITIES as $priority)
+                                <option value="{{ $priority }}" @selected(old('priority', 'normal') === $priority)>{{ ucfirst($priority) }} priority</option>
+                            @endforeach
+                        </select>
+                        @error('priority') <span class="support-field-error">{{ $message }}</span> @enderror
+                    </div>
+
+                    <div class="input-group-custom">
                         <textarea class="form-control-custom" id="support-message" name="message" rows="5"
                             placeholder="Describe your problem..." maxlength="5000" required>{{ old('message') }}</textarea>
                         @error('message') <span class="support-field-error">{{ $message }}</span> @enderror
@@ -96,7 +106,7 @@
                                 <strong>{{ $ticket->ticket_number }}</strong>
                                 <span>{{ $ticket->subject }}</span>
                                 <small>
-                                    {{ $ticket->category }} · {{ str($ticket->status)->replace('_', ' ')->title() }} ·
+                                    {{ $ticket->category }} · {{ ucfirst($ticket->priority) }} · {{ str($ticket->status)->replace('_', ' ')->title() }} ·
                                     {{ $ticket->updated_at->format('M j, Y g:i A') }}
                                 </small>
                             </div>

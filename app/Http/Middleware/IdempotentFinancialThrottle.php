@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Deposit;
 use App\Models\ExchangeRequest;
+use App\Models\InternalUsdtTransfer;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use Closure;
@@ -60,6 +61,10 @@ class IdempotentFinancialThrottle
                 ->exists(),
             'withdrawal' => WithdrawalRequest::query()
                 ->where('user_id', $user->id)
+                ->where('submission_key', $submissionKey)
+                ->exists(),
+            'transfer' => InternalUsdtTransfer::query()
+                ->where('sender_user_id', $user->id)
                 ->where('submission_key', $submissionKey)
                 ->exists(),
             default => throw new \InvalidArgumentException('Unknown financial submission type.'),

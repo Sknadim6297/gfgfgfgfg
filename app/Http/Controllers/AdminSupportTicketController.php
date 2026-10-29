@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class AdminSupportTicketController extends Controller
@@ -23,7 +24,7 @@ class AdminSupportTicketController extends Controller
         ]);
         $summary = SupportTicket::query()
             ->selectRaw('COUNT(*) as total_count')
-            ->selectRaw('SUM(CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END) as active_count', ['open', 'in_progress'])
+            ->selectRaw('SUM(CASE WHEN status IN (?, ?, ?) THEN 1 ELSE 0 END) as active_count', ['open', 'in_progress', 'awaiting_member'])
             ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as resolved_count', ['resolved'])
             ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as closed_count', ['closed'])
             ->first();
@@ -78,12 +79,27 @@ class AdminSupportTicketController extends Controller
 
         DB::transaction(function () use ($request, $ticket, $validated, $admin): void {
             $lockedTicket = SupportTicket::query()->whereKey($ticket->id)->lockForUpdate()->firstOrFail();
+            if ($lockedTicket->status === 'closed') {
+                throw ValidationException::withMessages([
+                    'message' => 'Reopen the ticket before sending a reply.',
+                ]);
+            }
+
+            $previousStatus = $lockedTicket->status;
             $message = $lockedTicket->messages()->create([
                 'sender_type' => 'admin',
                 'sender_user_id' => $admin->id,
                 'message' => trim($validated['message']),
             ]);
-            $lockedTicket->touch();
+            if ($previousStatus !== 'awaiting_member') {
+                $lockedTicket->forceFill(['status' => 'awaiting_member'])->save();
+                $this->audit($request, $admin->id, $lockedTicket, 'admin.support_ticket_status_changed', [
+                    'before' => $previousStatus,
+                    'after' => 'awaiting_member',
+                ]);
+            } else {
+                $lockedTicket->touch();
+            }
 
             AuditLog::create([
                 'actor_user_id' => $admin->id,
@@ -128,6 +144,11 @@ class AdminSupportTicketController extends Controller
                 if ($lockedTicket->status === 'closed') {
                     $this->audit($request, $admin->id, $lockedTicket, 'admin.support_ticket_closed', [
                         'previous_status' => $before['status'],
+                    ]);
+                }
+                if ($before['status'] === 'closed' && $lockedTicket->status !== 'closed') {
+                    $this->audit($request, $admin->id, $lockedTicket, 'admin.support_ticket_reopened', [
+                        'after' => $lockedTicket->status,
                     ]);
                 }
             }

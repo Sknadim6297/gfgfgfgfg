@@ -5,14 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\DepositSettings;
 use App\Support\Decimal;
+use App\Support\DepositSettingsPersistence;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
-use Throwable;
 use Illuminate\View\View;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class AdminDepositSettingsController extends Controller
 {
@@ -37,6 +43,7 @@ class AdminDepositSettingsController extends Controller
             'contractConfigurationConfigured' => $contractConfigurationConfigured,
             'contractConfigurationValid' => $contractConfigurationValid,
             'contractMatches' => $contractMatches,
+            'storageReady' => DepositSettingsPersistence::storageReady(),
             'history' => AuditLog::query()
                 ->whereIn('event', ['admin.deposit_settings_updated', 'admin.deposit_qr_updated', 'admin.deposit_settings_deleted'])
                 ->with('actor')
@@ -46,8 +53,14 @@ class AdminDepositSettingsController extends Controller
         ]);
     }
 
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request): RedirectResponse|JsonResponse
     {
+        if (! DepositSettingsPersistence::storageReady()) {
+            $this->logDepositSettingsFailure(new RuntimeException('Deposit settings storage is missing required columns.'));
+
+            return $this->failedUpdateResponse($request, DepositSettingsPersistence::missingStorageMessage());
+        }
+
         $validated = $request->validate([
             'recipient_name' => ['nullable', 'string', 'max:120'],
             'instructions' => ['nullable', 'string', 'max:5000'],
@@ -156,39 +169,27 @@ class AdminDepositSettingsController extends Controller
 
         $newQrPath = null;
         $newLogoPath = null;
-        if ($request->hasFile('qr_image')) {
-            $newQrPath = $request->file('qr_image')->store('deposits/qr', 'local');
-            if (! $newQrPath) {
-                throw new RuntimeException('The payment QR image could not be stored.');
-            }
-        }
-
-        if ($request->hasFile('logo_image')) {
-            try {
-                $newLogoPath = $request->file('logo_image')->store('deposits/logos', 'local');
-            } catch (Throwable $exception) {
-                if ($newQrPath) {
-                    $this->deleteManagedImage($newQrPath, 'qr');
-                }
-
-                throw $exception;
-            }
-
-            if (! $newLogoPath) {
-                if ($newQrPath) {
-                    $this->deleteManagedImage($newQrPath, 'qr');
-                }
-
-                throw new RuntimeException('The network logo could not be stored.');
-            }
-        }
-
         $imagesChanged = false;
         $oldQrPath = null;
         $oldLogoPath = null;
         try {
+            if ($request->hasFile('qr_image')) {
+                $newQrPath = $request->file('qr_image')->store('deposits/qr', 'local');
+                if (! is_string($newQrPath) || $newQrPath === '') {
+                    throw new RuntimeException('The payment QR image could not be stored.');
+                }
+            }
+
+            if ($request->hasFile('logo_image')) {
+                $newLogoPath = $request->file('logo_image')->store('deposits/logos', 'local');
+                if (! is_string($newLogoPath) || $newLogoPath === '') {
+                    throw new RuntimeException('The network logo could not be stored.');
+                }
+            }
+
             DB::transaction(function () use ($request, $validated, $newQrPath, $newLogoPath, &$oldQrPath, &$oldLogoPath, &$imagesChanged, &$settings): void {
                 $settings = DepositSettings::query()->lockForUpdate()->find(1);
+                $creating = ! $settings;
                 if (! $settings) {
                     $settings = new DepositSettings(['id' => 1]);
                 }
@@ -245,14 +246,48 @@ class AdminDepositSettingsController extends Controller
                         : ($newLogoPath ?? $settings->logo_path),
                 ];
                 $settings->fill($settingsValues);
-                if (! $settings->save()) {
-                    throw new RuntimeException('The deposit settings model declined the save operation.');
+                try {
+                    if (! $settings->save()) {
+                        throw new RuntimeException('The deposit settings model declined the save operation.');
+                    }
+                } catch (UniqueConstraintViolationException $exception) {
+                    if (! $creating) {
+                        throw $exception;
+                    }
+
+                    $settings = DepositSettings::query()->lockForUpdate()->find(1);
+                    if (! $settings) {
+                        throw $exception;
+                    }
+
+                    $oldQrPath = $settings->qr_path;
+                    $oldLogoPath = $settings->logo_path;
+                    $imagesChanged = $newQrPath !== null
+                        || $newLogoPath !== null
+                        || ($request->boolean('remove_qr') && $oldQrPath !== null)
+                        || ($request->boolean('remove_logo') && $oldLogoPath !== null);
+                    $before = [
+                        'recipient_name' => $settings->recipient_name,
+                        'instructions' => $settings->instructions,
+                        'network_name' => $settings->network_name,
+                        'blockchain' => $settings->blockchain,
+                        'token_contract_address' => $settings->token_contract_address,
+                        'receiving_wallet_address' => $settings->receiving_wallet_address,
+                        'minimum_amount' => $settings->minimum_amount,
+                        'is_enabled' => (bool) $settings->is_enabled,
+                        'logo_configured' => (bool) $settings->logo_path,
+                        'qr_configured' => (bool) $settings->qr_path,
+                    ];
+                    $settings->fill($settingsValues);
+                    if (! $settings->save()) {
+                        throw new RuntimeException('The deposit settings model declined the save operation.');
+                    }
                 }
 
                 $settings->refresh();
                 foreach ($settingsValues as $attribute => $expectedValue) {
-                    if ($settings->getAttribute($attribute) !== $expectedValue) {
-                        throw new RuntimeException('The saved deposit settings could not be verified.');
+                    if (! DepositSettingsPersistence::matches($attribute, $settings->getAttribute($attribute), $expectedValue)) {
+                        throw new RuntimeException('The saved deposit settings could not be verified for '.$attribute.'.');
                     }
                 }
 
@@ -296,6 +331,8 @@ class AdminDepositSettingsController extends Controller
                 }
             });
         } catch (Throwable $exception) {
+            $this->logDepositSettingsFailure($exception);
+
             foreach ([[$newQrPath, 'qr'], [$newLogoPath, 'logo']] as [$newPath, $kind]) {
                 if (! $newPath) {
                     continue;
@@ -304,13 +341,11 @@ class AdminDepositSettingsController extends Controller
                 try {
                     $this->deleteManagedImage($newPath, $kind);
                 } catch (Throwable $cleanupException) {
-                    throw new RuntimeException('A newly uploaded deposit image could not be removed after the settings update failed.', previous: $cleanupException);
+                    report($cleanupException);
                 }
             }
 
-            report($exception);
-
-            return back()->withInput()->with('error', 'Deposit settings could not be saved. Please try again.');
+            return $this->failedUpdateResponse($request, DepositSettingsPersistence::adminMessage($exception));
         }
 
         foreach ([[$oldQrPath, $settings?->qr_path, 'qr'], [$oldLogoPath, $settings?->logo_path, 'logo']] as [$oldPath, $currentPath, $kind]) {
@@ -382,7 +417,7 @@ class AdminDepositSettingsController extends Controller
         return back()->with('status', 'Deposit settings deleted.');
     }
 
-    public function qr(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function qr(): StreamedResponse
     {
         $path = DepositSettings::query()->find(1)?->qr_path;
         abort_unless(DepositSettings::isManagedQrPath($path) && Storage::disk('local')->exists($path), 404);
@@ -393,7 +428,7 @@ class AdminDepositSettingsController extends Controller
         ]);
     }
 
-    public function logo(): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function logo(): StreamedResponse
     {
         $path = DepositSettings::query()->find(1)?->logo_path;
         abort_unless(DepositSettings::isManagedLogoPath($path) && Storage::disk('local')->exists($path), 404);
@@ -402,6 +437,30 @@ class AdminDepositSettingsController extends Controller
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function failedUpdateResponse(Request $request, string $message): RedirectResponse|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], 500);
+        }
+
+        return back()->withInput()->with('error', $message);
+    }
+
+    private function logDepositSettingsFailure(Throwable $exception): void
+    {
+        $context = [
+            'exception' => $exception::class,
+        ];
+
+        if ($exception instanceof QueryException) {
+            $context['sqlstate'] = $exception->errorInfo[0] ?? null;
+            $context['driver_code'] = $exception->errorInfo[1] ?? null;
+        }
+
+        Log::error('Deposit settings update failed.', $context);
+        report($exception);
     }
 
     private function deleteManagedImage(string $path, string $kind): void

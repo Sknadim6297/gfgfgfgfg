@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\BalanceLedgerEntry;
+use App\Models\DemoUsdtLedgerEntry;
 use App\Models\Deposit;
 use App\Models\User;
-use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +31,7 @@ class AdminDepositController extends Controller
             ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count', ['pending'])
             ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as approved_count', ['approved'])
             ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as rejected_count', ['rejected'])
-            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 8), 0) as approved_amount', ['approved'])
+            ->selectRaw('COALESCE(ROUND(SUM(CASE WHEN status = ? AND is_demo = ? THEN amount ELSE 0 END), 8), 0) as approved_amount', ['approved', false])
             ->first();
 
         $deposits = Deposit::query()
@@ -62,46 +62,14 @@ class AdminDepositController extends Controller
 
     public function show(Deposit $deposit): View
     {
-        $audit = AuditLog::query()
-            ->where('auditable_type', Deposit::class)
-            ->where('auditable_id', $deposit->id)
-            ->with('actor')
-            ->latest()
-            ->get();
-
         return view('admin.deposits.show', [
-            'deposit' => $deposit->load(['user', 'reviewer']),
-            'audit' => $audit,
-            'transactionHashSubmittedAt' => $audit->firstWhere('event', 'deposit.transaction_hash_submitted')?->created_at,
-            'ledgerEntry' => BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->first(),
+            'deposit' => $deposit->load('user'),
         ]);
     }
 
     public function update(Request $request, Deposit $deposit): RedirectResponse
     {
-        $rules = [
-            'status' => ['required', Rule::in(['approved', 'rejected'])],
-            'rejection_reason' => ['required_if:status,rejected', 'nullable', 'string', 'max:2000'],
-        ];
-        if ($deposit->network_name === 'BEP20') {
-            $rules += [
-                'verification_checks' => ['exclude_unless:status,approved', 'required', 'array'],
-                'verification_checks.network' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.receipt' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.contract' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.recipient' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.amount' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.confirmations' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verification_checks.unique_transfer' => ['exclude_unless:status,approved', 'required', 'accepted'],
-                'verified_network' => ['exclude_unless:status,approved', 'required', 'in:BEP20'],
-                'verified_token_contract_address' => ['exclude_unless:status,approved', 'required', 'string', 'regex:/\A0x[a-fA-F0-9]{40}\z/'],
-                'verified_recipient_address' => ['exclude_unless:status,approved', 'required', 'string', 'regex:/\A0x[a-fA-F0-9]{40}\z/'],
-                'verified_amount' => ['exclude_unless:status,approved', 'required', 'string', 'regex:/\A(?:0|[1-9]\d{0,11})(?:\.\d{1,8})?\z/'],
-                'transaction_event_index' => ['exclude_unless:status,approved', 'required', 'integer', 'min:0'],
-                'blockchain_confirmations' => ['exclude_unless:status,approved', 'required', 'integer', 'min:1'],
-            ];
-        }
-        $validated = $request->validate($rules);
+        $validated = $request->validate(['status' => ['required', Rule::in(['approved', 'rejected'])]]);
         $admin = $request->user('admin');
         $alreadyResolved = false;
 
@@ -118,46 +86,60 @@ class AdminDepositController extends Controller
                 abort(422, 'This deposit request has already been resolved.');
             }
 
-            $verificationMetadata = null;
             if ($validated['status'] === 'approved') {
-                if ($locked->network_name === 'BEP20') {
-                    $verificationMetadata = $this->validateBep20Verification($locked, $validated, $admin->id);
-                }
-
                 $user = User::query()->whereKey($locked->user_id)->lockForUpdate()->firstOrFail();
-                abort_if(
-                    BalanceLedgerEntry::query()->where('deposit_id', $locked->id)->exists(),
-                    409,
-                    'A ledger credit already exists for this deposit.'
-                );
-                if ($locked->transaction_hash
-                    && Deposit::query()->where('transaction_hash', $locked->transaction_hash)->where('id', '!=', $locked->id)->exists()) {
-                    abort(409, 'This blockchain transaction has already been claimed by another deposit.');
-                }
 
-                BalanceLedgerEntry::create([
-                    'user_id' => $user->id,
-                    'deposit_id' => $locked->id,
-                    'actor_user_id' => $admin->id,
-                    'entry_type' => 'credit',
-                    'amount' => $locked->amount,
-                ]);
-                DB::table('users')->where('id', $user->id)->increment('balance', $locked->amount);
+                if ($locked->is_demo) {
+                    abort_unless(
+                        config('deposits.demo_approval_enabled') === true,
+                        403,
+                        'Demo deposit approval is disabled. Enable it explicitly before approving demo deposits.'
+                    );
+                    abort_if(
+                        DemoUsdtLedgerEntry::query()->where('deposit_id', $locked->id)->exists(),
+                        409,
+                        'A demo wallet credit already exists for this deposit.'
+                    );
 
-                if ($verificationMetadata !== null) {
-                    $locked->forceFill([
-                        'transaction_event_index' => $validated['transaction_event_index'],
-                        'blockchain_confirmations' => $validated['blockchain_confirmations'],
-                        'blockchain_verified_at' => now(),
+                    DemoUsdtLedgerEntry::create([
+                        'user_id' => $user->id,
+                        'deposit_id' => $locked->id,
+                        'actor_user_id' => $admin->id,
+                        'amount' => $locked->amount,
                     ]);
+                    DB::table('users')->where('id', $user->id)->increment('demo_usdt_balance', $locked->amount);
+                } else {
+                    if ($locked->blockchain_verified_at === null
+                        || ! is_string($locked->blockchain_verification_source)
+                        || trim($locked->blockchain_verification_source) === '') {
+                        throw ValidationException::withMessages([
+                            'status' => 'Real USDT deposits require independent blockchain verification before approval.',
+                        ]);
+                    }
+
+                    abort_if(
+                        BalanceLedgerEntry::query()->where('deposit_id', $locked->id)->exists(),
+                        409,
+                        'A ledger credit already exists for this deposit.'
+                    );
+                    if ($locked->transaction_hash
+                        && Deposit::query()->where('transaction_hash', $locked->transaction_hash)->where('id', '!=', $locked->id)->exists()) {
+                        abort(409, 'This blockchain transaction has already been claimed by another deposit.');
+                    }
+
+                    BalanceLedgerEntry::create([
+                        'user_id' => $user->id,
+                        'deposit_id' => $locked->id,
+                        'actor_user_id' => $admin->id,
+                        'entry_type' => 'credit',
+                        'amount' => $locked->amount,
+                    ]);
+                    DB::table('users')->where('id', $user->id)->increment('balance', $locked->amount);
                 }
             }
 
             $locked->forceFill([
                 'status' => $validated['status'],
-                'rejection_reason' => $validated['status'] === 'rejected'
-                    ? $validated['rejection_reason']
-                    : null,
                 'reviewed_by_user_id' => $admin->id,
                 'reviewed_at' => now(),
             ])->save();
@@ -170,10 +152,13 @@ class AdminDepositController extends Controller
                 'auditable_id' => $locked->id,
                 'metadata' => [
                     'amount' => $locked->amount,
+                    'is_demo' => $locked->is_demo,
+                    'credited_wallet' => $validated['status'] === 'approved'
+                        ? ($locked->is_demo ? 'demo_usdt' : 'usdt')
+                        : null,
                     'transaction_reference' => $locked->transaction_reference,
                     'transaction_hash' => $locked->transaction_hash,
-                    'manual_verification' => $verificationMetadata,
-                    'rejection_reason' => $locked->rejection_reason,
+                    'transaction_verification' => $locked->is_demo ? 'not_verified_demo' : null,
                 ],
                 'ip_address' => $request->ip(),
             ]);
@@ -181,7 +166,9 @@ class AdminDepositController extends Controller
 
         return back()->with(
             'status',
-            $alreadyResolved ? 'This deposit was already processed; no additional balance change was made.' : 'Deposit request updated.'
+            $alreadyResolved
+                ? 'This deposit was already processed; no additional balance change was made.'
+                : ($validated['status'] === 'approved' ? 'Deposit approved successfully.' : 'Deposit rejected successfully.')
         );
     }
 
@@ -204,62 +191,6 @@ class AdminDepositController extends Controller
             'Cache-Control' => 'private, no-store',
             'X-Content-Type-Options' => 'nosniff',
         ]);
-    }
-
-    private function validateBep20Verification(Deposit $deposit, array $validated, int $adminId): array
-    {
-        if (! is_string($deposit->transaction_hash) || trim($deposit->transaction_hash) === '') {
-            throw ValidationException::withMessages([
-                'transaction_hash' => 'A customer-submitted transaction ID is required before approval.',
-            ]);
-        }
-
-        $checks = $validated['verification_checks'] ?? [];
-        foreach (['network', 'receipt', 'contract', 'recipient', 'amount', 'confirmations', 'unique_transfer'] as $check) {
-            if (! in_array($checks[$check] ?? null, [true, 1, '1', 'on', 'yes'], true)) {
-                throw ValidationException::withMessages([
-                    'verification_checks' => 'Confirm every manual blockchain verification item before approving.',
-                ]);
-            }
-        }
-
-        $trustedContract = config('services.bep20.usdt_contract_address');
-        if (! is_string($trustedContract)
-            || preg_match('/\A0x[a-fA-F0-9]{40}\z/', $trustedContract) !== 1
-            || ! is_string($deposit->token_contract_address)
-            || ! hash_equals(strtolower($trustedContract), strtolower($deposit->token_contract_address))
-            || ! hash_equals(strtolower($deposit->token_contract_address), strtolower($validated['verified_token_contract_address']))) {
-            throw ValidationException::withMessages([
-                'verified_token_contract_address' => 'The verified contract must match both the deposit snapshot and trusted server configuration.',
-            ]);
-        }
-
-        if (! is_string($deposit->receiving_wallet_address)
-            || ! hash_equals(strtolower($deposit->receiving_wallet_address), strtolower($validated['verified_recipient_address']))) {
-            throw ValidationException::withMessages([
-                'verified_recipient_address' => 'The verified recipient must match the deposit’s original receiving wallet.',
-            ]);
-        }
-
-        if (Decimal::compare($validated['verified_amount'], (string) $deposit->amount, 8) !== 0) {
-            throw ValidationException::withMessages([
-                'verified_amount' => 'The verified token transfer amount must match the requested deposit amount exactly.',
-            ]);
-        }
-
-        return [
-            'network' => 'BNB Smart Chain mainnet (BEP20)',
-            'receipt_successful' => true,
-            'contract_address' => strtolower($validated['verified_token_contract_address']),
-            'recipient_address' => strtolower($validated['verified_recipient_address']),
-            'verified_amount' => $validated['verified_amount'],
-            'transaction_event_index' => (int) $validated['transaction_event_index'],
-            'blockchain_confirmations' => (int) $validated['blockchain_confirmations'],
-            'required_confirmations_satisfied' => true,
-            'transfer_event_not_previously_credited' => true,
-            'verified_by_admin_id' => $adminId,
-            'verified_at' => now()->toIso8601String(),
-        ];
     }
 
     private function snapshotAvailable(?string $path, string $kind): bool

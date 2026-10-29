@@ -1315,7 +1315,7 @@ class AuthenticationAndPortalTest extends TestCase
             ->assertSee('All-time recorded amounts. USD, USDT, and INR are separate measures and are not combined.')
             ->assertSee('0 USDT')
             ->assertSee('₹0.00 INR at saved request rates')
-            ->assertSee('Approved deposits only')
+            ->assertSee('Excludes DEMO wallet credits')
             ->assertSee('₹0.00')
             ->assertSee('$3.12')
             ->assertSee('₹6.00');

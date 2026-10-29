@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\ExchangeRequest;
-use App\Models\ReferralCommission;
 use App\Models\ReferralCommissionLevel;
 use App\Models\User;
 use App\Services\ReferralCommissionService;
 use App\Support\Decimal;
+use App\Support\MemberNoticePrompt;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,6 +73,7 @@ class AuthController extends Controller
         Auth::guard('web')->login($user);
         $request->session()->forget('url.intended');
         $request->session()->regenerate();
+        MemberNoticePrompt::begin($request);
 
         return redirect()->route('home')->with('status', 'Your account has been created successfully.');
     }
@@ -109,6 +110,7 @@ class AuthController extends Controller
         Auth::guard('web')->login($user, $request->boolean('remember'));
         $request->session()->forget('url.intended');
         $request->session()->regenerate();
+        MemberNoticePrompt::begin($request);
 
         return redirect()->intended(route('home'))->with('status', 'Signed in successfully.');
     }

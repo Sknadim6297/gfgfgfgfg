@@ -32,11 +32,21 @@
                     <span class="profile-balance-label">INR Balance</span>
                     <strong>{{ \App\Support\Money::formatInr((string) $user->inr_balance) }}</strong>
                 </article>
+                @if ((float) $user->demo_usdt_balance > 0)
+                    <article class="profile-balance-card wallet-balance-card">
+                        <span class="profile-balance-icon"><i class="bi bi-flask" aria-hidden="true"></i></span>
+                        <span class="profile-balance-label">DEMO USDT (not withdrawable or exchangeable)</span>
+                        <strong>{{ \App\Support\Money::formatUsdt((string) $user->demo_usdt_balance) }}</strong>
+                    </article>
+                @endif
             </section>
 
             <div class="profile-primary-actions wallet-primary-actions">
                 <a class="profile-action-button profile-bank-action" href="{{ route('deposit.create') }}">
                     <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Add Funds</span><i class="bi bi-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a class="profile-action-button profile-sell-action wallet-withdraw-action" href="{{ route('wallet.transfers.index') }}">
+                    <i class="bi bi-send" aria-hidden="true"></i><span>Transfer USDT</span><i class="bi bi-arrow-right" aria-hidden="true"></i>
                 </a>
                 @if ($canWithdraw)
                     <a class="profile-action-button profile-sell-action wallet-withdraw-action" href="{{ route('wallet.withdrawals.create') }}">
@@ -74,7 +84,7 @@
                     <article class="wallet-history-item">
                         <div class="wallet-history-main">
                             <div><span class="wallet-history-label">Deposit ID</span><strong>{{ $deposit->deposit_id }}</strong></div>
-                            <div><span class="wallet-history-label">Amount (USDT)</span><strong>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT</strong></div>
+                            <div><span class="wallet-history-label">Amount (USDT)</span><strong>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT{{ $deposit->is_demo ? ' (DEMO)' : '' }}</strong></div>
                             <div><span class="wallet-history-label">Network</span><strong>{{ $deposit->network_name ?? '—' }}</strong></div>
                             <div><span class="wallet-history-label">{{ $deposit->transaction_hash ? 'Transaction Hash' : 'Transaction' }}</span><strong class="wallet-history-wrap">{{ $deposit->transaction_hash ?? $deposit->transaction_reference ?? 'Not submitted' }}</strong></div>
                             <div><span class="wallet-history-label">Date</span><strong>{{ $deposit->submitted_at->format('M j, Y · H:i') }}</strong></div>

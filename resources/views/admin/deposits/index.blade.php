@@ -2,18 +2,18 @@
 @section('title', 'Quick PayMoney | Deposit Management')
 @section('admin-content')
     <div class="admin-page-heading">
-        <div><span class="admin-eyebrow">PAYMENT OPERATIONS</span><h1>Deposit requests</h1><p>Manually verify each BEP20 transaction before approving a wallet credit.</p></div>
+        <div><span class="admin-eyebrow">PAYMENT OPERATIONS</span><h1>Deposit requests</h1><p>Review deposits and resolve eligible requests.</p></div>
         <a class="admin-button admin-button-secondary" href="{{ route('admin.deposit-settings.edit') }}"><i class="bi bi-gear" aria-hidden="true"></i> Deposit settings</a>
     </div>
 
-    <p class="admin-summary-note">All-time request totals. Only approved amounts count as credited USDT; filters affect the queue below.</p>
+    <p class="admin-summary-note">All-time request totals. Demo wallet amounts are excluded from real USDT totals.</p>
     <section class="admin-stats admin-user-stats" aria-label="Deposit verification summary">
         @foreach ([
             ['Total Deposit Requests', number_format((int) $summary->total_count), 'All statuses'],
-            ['Pending Verification', number_format((int) $summary->pending_count), 'Awaiting admin review'],
-            ['Approved Deposits', number_format((int) $summary->approved_count), 'Verified and credited'],
+            ['Pending Deposits', number_format((int) $summary->pending_count), 'Awaiting admin review'],
+            ['Approved Deposits', number_format((int) $summary->approved_count), 'Approved status'],
             ['Rejected Deposits', number_format((int) $summary->rejected_count), 'Not credited'],
-            ['Total Approved USDT', \App\Support\Money::formatUsdt((string) $summary->approved_amount).' USDT', 'Approved status only'],
+            ['Total Approved USDT', \App\Support\Money::formatUsdt((string) $summary->approved_amount).' USDT', 'Real wallet credits only'],
         ] as [$label, $value, $description])
             <article class="admin-stat"><span class="admin-stat-label">{{ $label }}</span><strong>{{ $value }}</strong><small>{{ $description }}</small></article>
         @endforeach
@@ -38,7 +38,7 @@
                     <tr>
                         <td><span class="admin-id">{{ $deposit->deposit_id }}</span></td>
                         <td><div class="admin-user-cell"><span class="admin-avatar admin-avatar-table" aria-hidden="true">{{ mb_substr($deposit->user->name, 0, 1) }}</span><span><strong>{{ $deposit->user->name }}</strong><small>{{ $deposit->user->customer_id }} · {{ $deposit->user->email }}</small></span></div></td>
-                        <td>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT</td>
+                        <td>{{ \App\Support\Money::formatUsdt((string) $deposit->amount) }} USDT{{ $deposit->is_demo ? ' (DEMO)' : '' }}</td>
                         <td>{{ $deposit->network_name ?? 'Legacy' }}</td>
                         <td><span class="admin-reference-text">{{ $deposit->transaction_hash ?? $deposit->transaction_reference ?? 'Not submitted' }}</span></td>
                         <td><time datetime="{{ $deposit->submitted_at->toIso8601String() }}">{{ $deposit->submitted_at->timezone(config('app.timezone'))->format('M j, Y · H:i') }}</time></td>

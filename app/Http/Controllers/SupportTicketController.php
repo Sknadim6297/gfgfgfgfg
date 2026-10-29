@@ -47,6 +47,7 @@ class SupportTicketController extends Controller
             'email' => [$customer ? 'nullable' : 'required', 'email', 'max:255'],
             'subject' => ['required', 'string', 'max:150'],
             'category' => ['required', Rule::in(SupportTicket::CATEGORIES)],
+            'priority' => ['nullable', Rule::in(SupportTicket::PRIORITIES)],
             'message' => ['required', 'string', 'min:10', 'max:5000'],
         ]);
 
@@ -59,7 +60,7 @@ class SupportTicketController extends Controller
                 'subject' => trim($validated['subject']),
                 'category' => $validated['category'],
                 'status' => 'open',
-                'priority' => 'normal',
+                'priority' => $validated['priority'] ?? 'normal',
             ]);
 
             $ticket->messages()->create([
@@ -128,7 +129,10 @@ class SupportTicketController extends Controller
                 'sender_user_id' => $customer->id,
                 'message' => trim($validated['message']),
             ]);
-            $lockedTicket->touch();
+            if ($lockedTicket->status !== 'open') {
+                $lockedTicket->status = 'open';
+            }
+            $lockedTicket->save();
         });
 
         return redirect()->route('support.tickets.show', $ticket->ticket_number)

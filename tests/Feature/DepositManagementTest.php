@@ -8,14 +8,17 @@ use App\Models\Deposit;
 use App\Models\DepositSettings;
 use App\Models\ExchangeRate;
 use App\Models\User;
+use App\Support\DepositSettingsPersistence;
 use Database\Seeders\ExchangeRateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 class DepositManagementTest extends TestCase
@@ -47,10 +50,15 @@ class DepositManagementTest extends TestCase
             'transaction_event_index',
             'blockchain_confirmations',
             'blockchain_verified_at',
+            'blockchain_verification_source',
+            'is_demo',
         ] as $column) {
             $this->assertContains($column, Schema::getColumnListing('deposits'));
         }
 
+        $this->assertContains('demo_usdt_balance', Schema::getColumnListing('users'));
+        $this->assertSame('0.00000000', $customer->fresh()->demo_usdt_balance);
+        $this->assertFalse($deposit->fresh()->is_demo);
         $fractionalDeposit = $this->makeDeposit($customer, '0.12345678', 'EIGHT-DECIMALS-001');
         $this->assertSame('0.12345678', $fractionalDeposit->fresh()->amount);
         $this->assertSame(['pending', 'approved', 'rejected'], Deposit::STATUSES);
@@ -127,6 +135,67 @@ class DepositManagementTest extends TestCase
             ->assertSessionMissing('status');
         $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
         $this->assertDatabaseMissing('audit_logs', ['event' => 'admin.deposit_settings_updated']);
+    }
+
+    public function test_failed_deposit_settings_save_is_logged_without_showing_the_exception_to_the_admin(): void
+    {
+        Log::listen(function ($event) use (&$logged): void {
+            if ($event->level === 'error' && ($event->context['exception'] ?? null) === RuntimeException::class) {
+                $logged = true;
+            }
+        });
+        $logged = false;
+        $admin = $this->admin();
+        $event = 'eloquent.saving: '.DepositSettings::class;
+        Event::listen($event, static fn (): bool => false);
+
+        try {
+            $response = $this->actingAs($admin, 'admin')
+                ->withSession(['admin_2fa_verified' => true])
+                ->from(route('admin.deposit-settings.edit'))
+                ->put(route('admin.deposit-settings.update'), [
+                    'network_name' => 'BEP20',
+                    'blockchain' => 'BNB Smart Chain',
+                    'token_contract_address' => '0x'.str_repeat('a', 40),
+                    'receiving_wallet_address' => '0x'.str_repeat('b', 40),
+                    'recipient_name' => 'Quick PayMoney',
+                    'minimum_amount' => '5.25000000',
+                    'instructions' => 'Send only USDT using BNB Smart Chain.',
+                    'is_enabled' => '0',
+                ]);
+        } finally {
+            Event::forget($event);
+        }
+
+        $response->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHas('error', 'Deposit settings could not be saved. Please try again.')
+            ->assertDontSee(RuntimeException::class);
+        $this->assertTrue($logged);
+    }
+
+    public function test_deposit_settings_save_explains_a_missing_schema_without_writing_settings(): void
+    {
+        Schema::shouldReceive('hasColumns')
+            ->once()
+            ->with('deposit_settings', DepositSettingsPersistence::COLUMNS)
+            ->andReturn(false);
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->from(route('admin.deposit-settings.edit'))
+            ->put(route('admin.deposit-settings.update'), [
+                'network_name' => 'BEP20',
+                'blockchain' => 'BNB Smart Chain',
+                'recipient_name' => 'Quick PayMoney',
+                'minimum_amount' => '5.00000000',
+                'instructions' => 'Send only USDT using BNB Smart Chain.',
+                'is_enabled' => '0',
+            ])
+            ->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHas('error', DepositSettingsPersistence::missingStorageMessage());
+
+        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
     }
 
     public function test_admin_enables_deposits_when_contract_matches_case_insensitively_and_status_is_visible(): void
@@ -301,6 +370,173 @@ class DepositManagementTest extends TestCase
             ])
             ->assertRedirect(route('admin.deposit-settings.edit'))
             ->assertSessionHasErrors('is_enabled');
+        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+    }
+
+    public function test_first_save_persists_one_settings_row_and_a_repeat_save_updates_it(): void
+    {
+        Storage::fake('local');
+        $trustedContract = '0x'.str_repeat('a', 40);
+        config(['services.bep20.usdt_contract_address' => $trustedContract]);
+        $admin = $this->admin();
+        $this->assertFalse((new DepositSettings)->getIncrementing());
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
+
+        $this->put(route('admin.deposit-settings.update'), [
+            'network_name' => 'BEP20',
+            'blockchain' => 'BNB Smart Chain',
+            'token_contract_address' => $trustedContract,
+            'receiving_wallet_address' => '0x'.str_repeat('b', 40),
+            'recipient_name' => 'Quick PayMoney',
+            'minimum_amount' => '5.25000000',
+            'instructions' => 'Send only USDT using BNB Smart Chain.',
+            'is_enabled' => '0',
+        ])->assertRedirect()
+            ->assertSessionHas('status', 'Deposit settings updated.')
+            ->assertSessionMissing('error');
+
+        $settings = DepositSettings::query()->findOrFail(1);
+        $this->assertSame(1, DepositSettings::query()->count());
+        $this->assertSame(1, $settings->id);
+        $this->assertFalse($settings->is_enabled);
+        $this->assertNull($settings->qr_path);
+        $this->assertNull($settings->logo_path);
+        $this->assertSame($trustedContract, $settings->token_contract_address);
+        $this->assertSame('0x'.str_repeat('b', 40), $settings->receiving_wallet_address);
+
+        $this->put(route('admin.deposit-settings.update'), [
+            'network_name' => 'BEP20',
+            'blockchain' => 'BNB Smart Chain',
+            'token_contract_address' => '0x'.str_repeat('A', 40),
+            'receiving_wallet_address' => '0x'.str_repeat('c', 40),
+            'recipient_name' => 'Quick PayMoney Updated',
+            'minimum_amount' => '6.00000000',
+            'instructions' => 'Updated instructions.',
+            'is_enabled' => '0',
+        ])->assertRedirect()
+            ->assertSessionHas('status', 'Deposit settings updated.');
+
+        $this->assertSame(1, DepositSettings::query()->count());
+        $updated = DepositSettings::query()->findOrFail(1);
+        $this->assertSame('Quick PayMoney Updated', $updated->recipient_name);
+        $this->assertSame('0x'.str_repeat('A', 40), $updated->token_contract_address);
+        $this->assertFalse($updated->is_enabled);
+
+        $this->get(route('admin.deposit-settings.edit'))
+            ->assertOk()
+            ->assertSee('Quick PayMoney Updated')
+            ->assertSee('0x'.str_repeat('A', 40))
+            ->assertSee('Contract Verification')
+            ->assertSee('Matched')
+            ->assertSee('Disabled');
+
+        $this->from(route('admin.deposit-settings.edit'))
+            ->put(route('admin.deposit-settings.update'), [
+                'network_name' => 'BEP20',
+                'blockchain' => 'BNB Smart Chain',
+                'token_contract_address' => '0x'.str_repeat('d', 40),
+                'receiving_wallet_address' => '0x'.str_repeat('c', 40),
+                'recipient_name' => 'Quick PayMoney Updated',
+                'minimum_amount' => '6.00000000',
+                'instructions' => 'Updated instructions.',
+                'is_enabled' => '1',
+                'logo_image' => UploadedFile::fake()->image('network.png'),
+                'qr_image' => UploadedFile::fake()->image('deposit-qr.png'),
+            ])
+            ->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHasErrors('token_contract_address');
+
+        $this->assertSame('0x'.str_repeat('A', 40), DepositSettings::query()->findOrFail(1)->token_contract_address);
+        $this->assertFalse(DepositSettings::query()->findOrFail(1)->is_enabled);
+    }
+
+    public function test_deposit_settings_json_validation_and_unauthorized_access_do_not_write_settings(): void
+    {
+        config(['services.bep20.usdt_contract_address' => '0x'.str_repeat('a', 40)]);
+        $admin = $this->admin();
+
+        $this->putJson(route('admin.deposit-settings.update'), [
+            'token_contract_address' => '0x'.str_repeat('a', 40),
+            'is_enabled' => true,
+        ])->assertUnauthorized();
+
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
+
+        $this->putJson(route('admin.deposit-settings.update'), [
+            'token_contract_address' => '0x123',
+            'receiving_wallet_address' => 'not-a-wallet',
+            'is_enabled' => false,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['token_contract_address', 'receiving_wallet_address']);
+
+        $this->putJson(route('admin.deposit-settings.update'), [
+            'token_contract_address' => '0x'.str_repeat('c', 40),
+            'receiving_wallet_address' => '0x'.str_repeat('b', 40),
+            'is_enabled' => true,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('token_contract_address');
+
+        $this->putJson(route('admin.deposit-settings.update'), [
+            'token_contract_address' => '0x'.str_repeat('a', 40),
+            'is_enabled' => true,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['receiving_wallet_address', 'recipient_name', 'instructions', 'qr_image', 'logo_image']);
+
+        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+    }
+
+    public function test_qr_upload_failure_does_not_save_settings_or_expose_storage_details(): void
+    {
+        $disk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $disk->shouldReceive('putFileAs')->andReturn(false);
+        Storage::set('local', $disk);
+
+        $this->actingAs($this->admin(), 'admin')
+            ->withSession(['admin_2fa_verified' => true])
+            ->from(route('admin.deposit-settings.edit'))
+            ->put(route('admin.deposit-settings.update'), [
+                'recipient_name' => 'Quick PayMoney',
+                'instructions' => 'Send only USDT using BNB Smart Chain.',
+                'minimum_amount' => '5.00000000',
+                'is_enabled' => '0',
+                'qr_image' => UploadedFile::fake()->image('deposit-qr.png'),
+            ])
+            ->assertRedirect(route('admin.deposit-settings.edit'))
+            ->assertSessionHas('error', 'The payment QR image could not be stored.')
+            ->assertSessionMissing('status')
+            ->assertDontSee('storage')
+            ->assertDontSee('SQLSTATE');
+
+        $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
+    }
+
+    public function test_database_save_failure_returns_a_safe_json_error(): void
+    {
+        $admin = $this->admin();
+        $event = 'eloquent.saving: '.DepositSettings::class;
+        Event::listen($event, static fn (): bool => false);
+
+        try {
+            $response = $this->actingAs($admin, 'admin')
+                ->withSession(['admin_2fa_verified' => true])
+                ->putJson(route('admin.deposit-settings.update'), [
+                    'network_name' => 'BEP20',
+                    'blockchain' => 'BNB Smart Chain',
+                    'token_contract_address' => '0x'.str_repeat('a', 40),
+                    'receiving_wallet_address' => '0x'.str_repeat('b', 40),
+                    'recipient_name' => 'Quick PayMoney',
+                    'minimum_amount' => '5.25000000',
+                    'instructions' => 'Send only USDT using BNB Smart Chain.',
+                    'is_enabled' => false,
+                ]);
+        } finally {
+            Event::forget($event);
+        }
+
+        $response->assertStatus(500)
+            ->assertJsonPath('message', 'Deposit settings could not be saved. Please try again.')
+            ->assertDontSee(RuntimeException::class)
+            ->assertDontSee('SQLSTATE');
         $this->assertDatabaseMissing('deposit_settings', ['id' => 1]);
     }
 
@@ -857,126 +1093,79 @@ class DepositManagementTest extends TestCase
         Storage::fake('local');
         $this->configureQr();
         $customer = User::factory()->create();
-        $deposit = $this->createBep20Deposit($customer, '10.00', '0x'.str_repeat('a', 64));
-        $payload = $this->validBep20ApprovalPayload($deposit);
+        $deposit = $this->createBep20Deposit($customer, '10.00', 'ddfdfd');
+        $deposit->forceFill(['is_demo' => true])->save();
 
-        $this->put(route('admin.deposits.update', $deposit), $payload)
+        $this->put(route('admin.deposits.update', $deposit), ['status' => 'approved'])
             ->assertRedirect(route('admin.login'));
         $this->actingAs($this->admin(), 'admin')
-            ->put(route('admin.deposits.update', $deposit), $payload)
+            ->put(route('admin.deposits.update', $deposit), ['status' => 'approved'])
             ->assertRedirect(route('admin.2fa.challenge'));
         $this->assertSame('pending', $deposit->fresh()->status);
-        $this->assertSame('0.00000000', $customer->fresh()->balance);
+        $this->assertSame('0.00000000', $customer->fresh()->demo_usdt_balance);
     }
 
-    public function test_bep20_approval_requires_a_txid_and_all_manual_verification_checks(): void
+    public function test_real_deposit_cannot_be_approved_without_independent_verification(): void
     {
         Storage::fake('local');
         $this->configureQr();
         $customer = User::factory()->create();
-        $withoutHash = $this->createCustomerDeposit($customer, '10.00');
-        $withHash = $this->createBep20Deposit($customer, '11.00', '0x'.str_repeat('b', 64));
+        $deposit = $this->createBep20Deposit($customer, '10.00', 'ddfdfd');
         $admin = $this->admin();
+        config(['deposits.demo_approval_enabled' => true]);
 
         $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
-            ->from(route('admin.deposits.show', $withoutHash))
-            ->put(route('admin.deposits.update', $withoutHash), $this->validBep20ApprovalPayload($withoutHash))
-            ->assertSessionHasErrors('transaction_hash');
-        $this->assertSame('pending', $withoutHash->fresh()->status);
+            ->from(route('admin.deposits.show', $deposit))
+            ->put(route('admin.deposits.update', $deposit), ['status' => 'approved'])
+            ->assertSessionHasErrors('status');
 
-        $payload = $this->validBep20ApprovalPayload($withHash);
-        unset($payload['verification_checks']['confirmations']);
-        $this->from(route('admin.deposits.show', $withHash))
-            ->put(route('admin.deposits.update', $withHash), $payload)
-            ->assertSessionHasErrors('verification_checks.confirmations');
-        $this->assertSame('pending', $withHash->fresh()->status);
+        $this->assertSame('pending', $deposit->fresh()->status);
         $this->assertSame('0.00000000', $customer->fresh()->balance);
-        $this->assertSame(0, BalanceLedgerEntry::query()->where('user_id', $customer->id)->count());
+        $this->assertSame(0, BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->count());
     }
 
-    public function test_bep20_approval_rejects_verified_contract_recipient_and_amount_mismatches(): void
-    {
-        Storage::fake('local');
-        $this->configureQr();
-        $customer = User::factory()->create();
-        $admin = $this->admin();
-        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
-
-        foreach ([
-            ['field' => 'verified_token_contract_address', 'value' => '0x'.str_repeat('c', 40), 'error' => 'verified_token_contract_address'],
-            ['field' => 'verified_recipient_address', 'value' => '0x'.str_repeat('d', 40), 'error' => 'verified_recipient_address'],
-            ['field' => 'verified_amount', 'value' => '10.00000001', 'error' => 'verified_amount'],
-        ] as $index => $case) {
-            $deposit = $this->createBep20Deposit($customer, '10.00', '0x'.str_repeat(dechex(10 + $index), 64));
-            $payload = $this->validBep20ApprovalPayload($deposit);
-            $payload[$case['field']] = $case['value'];
-            $this->from(route('admin.deposits.show', $deposit))
-                ->put(route('admin.deposits.update', $deposit), $payload)
-                ->assertSessionHasErrors($case['error']);
-            $this->assertSame('pending', $deposit->fresh()->status);
-        }
-
-        $this->assertSame('0.00000000', $customer->fresh()->balance);
-        $this->assertSame(0, BalanceLedgerEntry::query()->where('user_id', $customer->id)->count());
-    }
-
-    public function test_bep20_manual_approval_accepts_arbitrary_txid_and_records_verification_metadata(): void
-    {
-        Storage::fake('local');
-        $this->configureQr();
-        $customer = User::factory()->create(['balance' => '1.25000000']);
-        $deposit = $this->createBep20Deposit($customer, '10.12345678', 'TXN987654321');
-        $admin = $this->admin();
-
-        $response = $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
-            ->put(route('admin.deposits.update', $deposit), $this->validBep20ApprovalPayload($deposit))
-            ->assertRedirect()
-            ->assertSessionHas('status', 'Deposit request updated.');
-
-        $this->assertSame('approved', $deposit->fresh()->status);
-        $this->assertSame('11.37345678', $customer->fresh()->balance);
-        $this->assertSame(1, BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->count());
-        $this->assertSame($admin->id, $deposit->fresh()->reviewed_by_user_id);
-        $this->assertNotNull($deposit->fresh()->reviewed_at);
-        $this->assertNotNull($deposit->fresh()->blockchain_verified_at);
-        $this->assertSame(20, $deposit->fresh()->blockchain_confirmations);
-        $this->assertSame(3, $deposit->fresh()->transaction_event_index);
-        $audit = AuditLog::query()->where('event', 'admin.deposit_approved')->where('auditable_id', $deposit->id)->firstOrFail();
-        $this->assertSame(true, $audit->metadata['manual_verification']['receipt_successful']);
-        $this->assertSame('10.12345678', $audit->metadata['manual_verification']['verified_amount']);
-
-        $response = $this->put(route('admin.deposits.update', $deposit), $this->validBep20ApprovalPayload($deposit))
-            ->assertRedirect()
-            ->assertSessionHas('status', 'This deposit was already processed; no additional balance change was made.');
-        $this->assertSame('11.37345678', $customer->fresh()->balance);
-        $this->assertSame(1, BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->count());
-        $this->assertSame(1, AuditLog::query()->where('event', 'admin.deposit_approved')->where('auditable_id', $deposit->id)->count());
-    }
-
-    public function test_bep20_rejection_requires_a_reason_and_never_credits_balance_or_ledger(): void
+    public function test_rejection_needs_no_reason_and_does_not_credit_any_wallet(): void
     {
         Storage::fake('local');
         $this->configureQr();
         $customer = User::factory()->create(['balance' => '9.00000000']);
-        $deposit = $this->createBep20Deposit($customer, '17.00', '0x'.str_repeat('f', 64));
+        $deposit = $this->createBep20Deposit($customer, '17.00', 'ddfdfd');
         $admin = $this->admin();
-        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true]);
 
-        $this->from(route('admin.deposits.show', $deposit))
-            ->put(route('admin.deposits.update', $deposit), ['status' => 'rejected', 'rejection_reason' => ''])
-            ->assertSessionHasErrors('rejection_reason');
-        $this->assertSame('pending', $deposit->fresh()->status);
+        $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
+            ->put(route('admin.deposits.update', $deposit), ['status' => 'rejected'])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Deposit rejected successfully.');
 
-        $this->put(route('admin.deposits.update', $deposit), [
-            'status' => 'rejected',
-            'rejection_reason' => 'The transfer could not be independently verified.',
-        ])->assertRedirect()->assertSessionHas('status', 'Deposit request updated.');
         $this->assertSame('rejected', $deposit->fresh()->status);
-        $this->assertSame('0x'.str_repeat('f', 64), $deposit->fresh()->transaction_hash);
-        $this->assertSame('The transfer could not be independently verified.', $deposit->fresh()->rejection_reason);
         $this->assertSame('9.00000000', $customer->fresh()->balance);
+        $this->assertSame('0.00000000', $customer->fresh()->demo_usdt_balance);
         $this->assertSame(0, BalanceLedgerEntry::query()->where('deposit_id', $deposit->id)->count());
         $this->assertDatabaseHas('audit_logs', ['event' => 'admin.deposit_rejected', 'auditable_id' => $deposit->id]);
+    }
+
+    public function test_deposit_details_view_contains_only_the_simple_review_fields_and_actions(): void
+    {
+        $customer = User::factory()->create();
+        $deposit = $this->makeDeposit($customer, '200.00', 'ddfdfd');
+
+        $this->actingAs($this->admin(), 'admin')->withSession(['admin_2fa_verified' => true])
+            ->get(route('admin.deposits.show', $deposit))
+            ->assertOk()
+            ->assertSee('Deposit Details')
+            ->assertSee('Customer ID')
+            ->assertSee('Submitted Transaction ID')
+            ->assertSee('Approve Deposit')
+            ->assertSee('Reject Deposit')
+            ->assertDontSee('Manual Verification')
+            ->assertDontSee('Audit Trail')
+            ->assertDontSee('Rejection reason')
+            ->assertDontSee('Admin remarks');
+
+        $deposit->forceFill(['status' => 'approved'])->save();
+        $this->get(route('admin.deposits.show', $deposit))
+            ->assertOk()
+            ->assertSee('disabled', false);
     }
 
     public function test_bep20_approval_transaction_rolls_back_balance_ledger_status_and_audit_on_failure(): void
@@ -985,6 +1174,10 @@ class DepositManagementTest extends TestCase
         $this->configureQr();
         $customer = User::factory()->create(['balance' => '4.00000000']);
         $deposit = $this->createBep20Deposit($customer, '10.00', '0x'.str_repeat('8', 64));
+        $deposit->forceFill([
+            'blockchain_verified_at' => now(),
+            'blockchain_verification_source' => 'bscscan-api',
+        ])->save();
         $admin = $this->admin();
         $event = 'eloquent.creating: '.BalanceLedgerEntry::class;
         \Illuminate\Support\Facades\Event::listen($event, static function (): void {
@@ -994,7 +1187,7 @@ class DepositManagementTest extends TestCase
 
         try {
             $this->actingAs($admin, 'admin')->withSession(['admin_2fa_verified' => true])
-                ->put(route('admin.deposits.update', $deposit), $this->validBep20ApprovalPayload($deposit));
+                ->put(route('admin.deposits.update', $deposit), ['status' => 'approved']);
             $this->fail('The simulated ledger failure should abort approval.');
         } catch (\RuntimeException $exception) {
             $this->assertSame('Simulated ledger storage failure.', $exception->getMessage());
@@ -1035,6 +1228,10 @@ class DepositManagementTest extends TestCase
         $this->configureQr();
         $customer = User::factory()->create();
         $first = $this->makeDeposit($customer, '50.25', 'UTRAPPROVE001');
+        $first->forceFill([
+            'blockchain_verified_at' => now(),
+            'blockchain_verification_source' => 'bscscan-api',
+        ])->save();
         $second = $this->makeDeposit($customer, '18.00', 'UTRREJECT0001');
         $admin = $this->admin();
 
@@ -1047,11 +1244,12 @@ class DepositManagementTest extends TestCase
 
         $this->get(route('admin.deposits.show', $first))
             ->assertOk()
-            ->assertSee('Verify the payment externally');
+            ->assertSee('Approve Deposit')
+            ->assertDontSee('Manual Verification');
 
         $this->put(route('admin.deposits.update', $first), ['status' => 'approved'])
             ->assertRedirect()
-            ->assertSessionHas('status', 'Deposit request updated.');
+            ->assertSessionHas('status', 'Deposit approved successfully.');
         $this->assertSame('approved', $first->fresh()->status);
         $this->assertSame('50.25000000', $customer->fresh()->balance);
         $this->assertSame(1, BalanceLedgerEntry::where('deposit_id', $first->id)->count());
@@ -1062,12 +1260,11 @@ class DepositManagementTest extends TestCase
         $this->assertSame('50.25000000', $customer->fresh()->balance);
         $this->assertSame(1, BalanceLedgerEntry::where('deposit_id', $first->id)->count());
 
-        $this->put(route('admin.deposits.update', $second), [
-            'status' => 'rejected',
-            'rejection_reason' => 'Payment could not be verified externally.',
-        ])->assertRedirect();
+        $this->put(route('admin.deposits.update', $second), ['status' => 'rejected'])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Deposit rejected successfully.');
         $this->assertSame('rejected', $second->fresh()->status);
-        $this->assertSame('Payment could not be verified externally.', $second->fresh()->rejection_reason);
+        $this->assertNull($second->fresh()->rejection_reason);
         $this->assertSame('50.25000000', $customer->fresh()->balance);
         $this->assertSame(1, BalanceLedgerEntry::where('user_id', $customer->id)->count());
 
@@ -1088,9 +1285,9 @@ class DepositManagementTest extends TestCase
             ->withSession(['admin_2fa_verified' => true])
             ->get(route('admin.deposits.index', ['status' => 'rejected']))
             ->assertOk()
-            ->assertSee('All-time request totals. Only approved amounts count as credited USDT')
+            ->assertSee('All-time request totals. Demo wallet amounts are excluded from real USDT totals.')
             ->assertSee('Total Deposit Requests')
-            ->assertSee('Pending Verification')
+            ->assertSee('Pending Deposits')
             ->assertSee('Approved Deposits')
             ->assertSee('Rejected Deposits')
             ->assertSee('Total Approved USDT')
@@ -1130,6 +1327,10 @@ class DepositManagementTest extends TestCase
             'auditable_id' => $deposit->id,
             'metadata' => $metadata,
         ]);
+        $deposit->forceFill([
+            'blockchain_verified_at' => now(),
+            'blockchain_verification_source' => 'bscscan-api',
+        ])->save();
         $admin = $this->admin();
 
         $this->actingAs($admin, 'admin')
@@ -1139,15 +1340,11 @@ class DepositManagementTest extends TestCase
 
         $response = $this->get(route('admin.deposits.show', $deposit))
             ->assertOk()
-            ->assertSee('Deposit Submitted')
-            ->assertSee('Deposit Approved')
             ->assertSee('Customer')
-            ->assertSee('$20,000.00')
-            ->assertSee('Transaction Reference')
-            ->assertSee('BEP20 mainnet')
-            ->assertDontSee('BNB Smart Chain')
-            ->assertSee('Ledger Credit')
-            ->assertSee('Recorded')
+            ->assertSee('Submitted Transaction ID')
+            ->assertDontSee('Manual Verification')
+            ->assertDontSee('Audit Trail')
+            ->assertDontSee('Transaction Reference')
             ->assertSee(e($customer->name), false)
             ->assertDontSee($customer->name, false)
             ->assertDontSee('<pre class="admin-pre">', false)
@@ -1189,16 +1386,14 @@ class DepositManagementTest extends TestCase
             ->assertDontSee('View full QR')
             ->assertDontSee('admin-deposit-logo-preview', false)
             ->assertDontSee('admin-deposit-qr-preview', false)
-            ->assertSee('data-copy-value="'.$deposit->deposit_id.'"', false)
-            ->assertSee('data-copy-value="'.$deposit->token_contract_address.'"', false)
-            ->assertSee('data-copy-value="'.$deposit->receiving_wallet_address.'"', false)
-            ->assertSee('data-copy-value="'.$txId.'"', false)
-            ->assertSee('https://bscscan.com/tx/'.$txId)
-            ->assertSee('BEP20 mainnet')
-            ->assertSee('Use USDT on BEP20 only.')
-            ->assertDontSee('BNB Smart Chain')
-            ->assertSee('Rejection reason')
-            ->assertSee('Wallet ledger status');
+            ->assertSee('Submitted Transaction ID')
+            ->assertSee($txId)
+            ->assertDontSee('https://bscscan.com/tx/'.$txId)
+            ->assertDontSee('BEP20 mainnet')
+            ->assertDontSee('Use USDT on BEP20 only.')
+            ->assertDontSee('Verified token contract')
+            ->assertDontSee('Rejection reason')
+            ->assertDontSee('Wallet ledger status');
 
         $this->assertDoesNotMatchRegularExpression('/<input[^>]*type="checkbox"[^>]*checked/i', $response->getContent());
         $this->assertSame('deposits/snapshots/review-logo.png', $deposit->fresh()->network_logo_path);
@@ -1430,28 +1625,6 @@ class DepositManagementTest extends TestCase
             ->assertRedirect(route('deposits.show', $deposit));
 
         return $deposit->fresh();
-    }
-
-    private function validBep20ApprovalPayload(Deposit $deposit): array
-    {
-        return [
-            'status' => 'approved',
-            'verification_checks' => [
-                'network' => '1',
-                'receipt' => '1',
-                'contract' => '1',
-                'recipient' => '1',
-                'amount' => '1',
-                'confirmations' => '1',
-                'unique_transfer' => '1',
-            ],
-            'verified_network' => 'BEP20',
-            'verified_token_contract_address' => $deposit->token_contract_address,
-            'verified_recipient_address' => $deposit->receiving_wallet_address,
-            'verified_amount' => $deposit->amount,
-            'transaction_event_index' => '3',
-            'blockchain_confirmations' => '20',
-        ];
     }
 
     private function admin(): User

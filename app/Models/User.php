@@ -110,6 +110,7 @@ class User extends Authenticatable
         'wallet_transaction_password_hash',
         'remember_token',
         'totp_secret',
+        'demo_usdt_balance',
         'balance',
         'inr_balance',
         'account_holder_name',
@@ -139,6 +140,7 @@ class User extends Authenticatable
             'totp_enabled' => 'boolean',
             'totp_last_counter' => 'integer',
             'balance' => 'decimal:8',
+            'demo_usdt_balance' => 'decimal:8',
             'inr_balance' => 'decimal:2',
             'account_holder_name' => 'encrypted',
             'bank_name' => 'encrypted',
@@ -163,6 +165,21 @@ class User extends Authenticatable
     public function balanceLedgerEntries(): HasMany
     {
         return $this->hasMany(BalanceLedgerEntry::class);
+    }
+
+    public function sentInternalTransfers(): HasMany
+    {
+        return $this->hasMany(InternalUsdtTransfer::class, 'sender_user_id');
+    }
+
+    public function receivedInternalTransfers(): HasMany
+    {
+        return $this->hasMany(InternalUsdtTransfer::class, 'recipient_user_id');
+    }
+
+    public function demoUsdtLedgerEntries(): HasMany
+    {
+        return $this->hasMany(DemoUsdtLedgerEntry::class);
     }
 
     public function inrLedgerEntries(): HasMany

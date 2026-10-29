@@ -30,6 +30,7 @@
                 </div>
                 <dl class="support-ticket-details">
                     <div><dt>Category</dt><dd>{{ $ticket->category }}</dd></div>
+                    <div><dt>Priority</dt><dd>{{ ucfirst($ticket->priority) }}</dd></div>
                     <div><dt>Status</dt><dd>{{ str($ticket->status)->replace('_', ' ')->title() }}</dd></div>
                     <div><dt>Created</dt><dd>{{ $ticket->created_at->format('M j, Y g:i A') }}</dd></div>
                 </dl>
