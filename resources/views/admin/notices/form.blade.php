@@ -92,10 +92,14 @@
 
     <dialog class="member-notice-dialog" id="admin-notice-preview" aria-labelledby="admin-notice-preview-title">
         <div class="member-notice-card">
-            <button class="member-notice-close" type="button" data-preview-close aria-label="Close preview"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
-            <div class="member-notice-icon" id="admin-notice-preview-icon" aria-hidden="true"><i class="bi bi-info-circle"></i></div>
-            <p class="member-notice-kicker" id="admin-notice-preview-kicker">Information</p>
-            <h2 id="admin-notice-preview-title" tabindex="-1">Notice title</h2>
+            <div class="member-notice-top">
+                <div class="member-notice-badge">
+                    <div class="member-notice-icon" id="admin-notice-preview-icon" aria-hidden="true"><i class="bi bi-info-circle"></i></div>
+                    <p class="member-notice-kicker" id="admin-notice-preview-kicker">Information</p>
+                </div>
+                <button class="member-notice-close" type="button" data-preview-close aria-label="Close preview"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </div>
+            <h2 id="admin-notice-preview-title">Platform Update</h2>
             <p class="member-notice-copy" id="admin-notice-preview-copy"></p>
             <p class="member-notice-date" id="admin-notice-preview-date"></p>
             <button class="member-notice-action" type="button" data-preview-close>Got it</button>
@@ -126,8 +130,8 @@
 
             const fill = () => {
                 const type = form.type.value || 'information';
-                const title = form.title.value.trim() || 'Notice title';
-                const description = form.description.value.trim() || 'Notice description';
+                const title = form.title.value.trim() || 'Platform Update';
+                const description = form.description.value.trim() || 'Dear Member, the Delta Support dashboard is being improved for a smoother and more secure experience. Some features may be temporarily unavailable during maintenance. Thank you for your patience.';
                 const publishAt = form.publish_at.value;
                 const icon = document.getElementById('admin-notice-preview-icon');
                 const glyph = document.createElement('i');
@@ -145,7 +149,6 @@
             open.addEventListener('click', () => {
                 fill();
                 dialog.showModal();
-                document.getElementById('admin-notice-preview-title').focus();
             });
             dialog.querySelectorAll('[data-preview-close]').forEach((button) => {
                 button.addEventListener('click', () => dialog.close());

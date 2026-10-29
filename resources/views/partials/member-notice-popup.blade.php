@@ -2,10 +2,14 @@
     <link href="{{ asset('assets/css/member-notices.css') }}" rel="stylesheet">
     <dialog class="member-notice-dialog" id="member-notice-dialog" aria-labelledby="member-notice-title" data-csrf="{{ csrf_token() }}">
         <div class="member-notice-card">
-            <button class="member-notice-close" type="button" data-member-notice-dismiss aria-label="Close notice"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
-            <div class="member-notice-icon" id="member-notice-icon" aria-hidden="true"><i class="bi bi-info-circle"></i></div>
-            <p class="member-notice-kicker" id="member-notice-kicker"></p>
-            <h2 id="member-notice-title" tabindex="-1"></h2>
+            <div class="member-notice-top">
+                <div class="member-notice-badge">
+                    <div class="member-notice-icon" id="member-notice-icon" aria-hidden="true"><i class="bi bi-info-circle"></i></div>
+                    <p class="member-notice-kicker" id="member-notice-kicker"></p>
+                </div>
+                <button class="member-notice-close" type="button" data-member-notice-dismiss aria-label="Close notice"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            </div>
+            <h2 id="member-notice-title"></h2>
             <p class="member-notice-copy" id="member-notice-copy"></p>
             <p class="member-notice-date" id="member-notice-date"></p>
             <p class="member-notice-date" id="member-notice-error" role="alert" hidden></p>
@@ -54,7 +58,6 @@
                 document.getElementById('member-notice-copy').textContent = notice.description;
                 document.getElementById('member-notice-date').textContent = `Published ${notice.published_on}`;
                 if (!dialog.open) dialog.showModal();
-                document.getElementById('member-notice-title').focus();
             };
 
             const dismiss = async () => {

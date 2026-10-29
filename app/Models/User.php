@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -167,16 +168,6 @@ class User extends Authenticatable
         return $this->hasMany(BalanceLedgerEntry::class);
     }
 
-    public function sentInternalTransfers(): HasMany
-    {
-        return $this->hasMany(InternalUsdtTransfer::class, 'sender_user_id');
-    }
-
-    public function receivedInternalTransfers(): HasMany
-    {
-        return $this->hasMany(InternalUsdtTransfer::class, 'recipient_user_id');
-    }
-
     public function demoUsdtLedgerEntries(): HasMany
     {
         return $this->hasMany(DemoUsdtLedgerEntry::class);
@@ -288,7 +279,7 @@ class User extends Authenticatable
         return $this->hasMany(self::class, 'referred_by_user_id');
     }
 
-    public function referrer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function referrer(): BelongsTo
     {
         return $this->belongsTo(self::class, 'referred_by_user_id');
     }

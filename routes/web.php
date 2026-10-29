@@ -4,9 +4,8 @@ use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminDepositController;
 use App\Http\Controllers\AdminDepositSettingsController;
-use App\Http\Controllers\AdminInternalTransferController;
-use App\Http\Controllers\AdminMemberNoticeController;
 use App\Http\Controllers\AdminExchangeController;
+use App\Http\Controllers\AdminMemberNoticeController;
 use App\Http\Controllers\AdminPushNotificationController;
 use App\Http\Controllers\AdminRateController;
 use App\Http\Controllers\AdminReferralController;
@@ -17,7 +16,6 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CustomerExchangeRequestController;
 use App\Http\Controllers\DepositController;
 use App\Http\Controllers\FcmDeviceTokenController;
-use App\Http\Controllers\InternalUsdtTransferController;
 use App\Http\Controllers\MemberNoticeController;
 use App\Http\Controllers\PublicPagesController;
 use App\Http\Controllers\SupportTicketController;
@@ -77,9 +75,6 @@ Route::middleware(['auth:web', 'auth.session', 'impersonation.readonly', 'member
         Route::put('/security/password', [AuthController::class, 'changePassword'])->middleware('route.throttle:6,1')->name('password.change');
         Route::get('/home', [PublicPagesController::class, 'home'])->name('home');
         Route::get('/wallet', WalletController::class)->name('wallet');
-        Route::get('/wallet/transfers', [InternalUsdtTransferController::class, 'index'])->name('wallet.transfers.index');
-        Route::post('/wallet/transfers/preview', [InternalUsdtTransferController::class, 'preview'])->middleware('route.throttle:20,10')->name('wallet.transfers.preview');
-        Route::post('/wallet/transfers', [InternalUsdtTransferController::class, 'store'])->middleware('financial.throttle:transfer,5,10')->name('wallet.transfers.store');
         Route::get('/exchange/sell', [CustomerExchangeRequestController::class, 'create'])->name('exchange.sell');
         Route::post('/exchange/requests/quote', [CustomerExchangeRequestController::class, 'quote'])->middleware('route.throttle:10,1')->name('exchange.requests.quote');
         Route::post('/exchange/requests', [CustomerExchangeRequestController::class, 'store'])->middleware('financial.throttle:sell,5,1')->name('exchange.requests.store');
@@ -166,9 +161,6 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
             Route::patch('/rates/{exchangeRate}/status', [AdminRateController::class, 'toggleStatus'])->name('rates.plans.status');
             Route::delete('/rates/{exchangeRate}', [AdminRateController::class, 'destroy'])->name('rates.plans.destroy');
 
-            Route::get('/internal-transfers', [AdminInternalTransferController::class, 'index'])->name('internal-transfers.index');
-            Route::get('/internal-transfers/settings', [AdminInternalTransferController::class, 'editSettings'])->name('internal-transfers.settings');
-            Route::put('/internal-transfers/settings', [AdminInternalTransferController::class, 'updateSettings'])->name('internal-transfers.settings.update');
             Route::get('/deposit-settings', [AdminDepositSettingsController::class, 'edit'])->name('deposit-settings.edit');
             Route::put('/deposit-settings', [AdminDepositSettingsController::class, 'update'])->name('deposit-settings.update');
             Route::delete('/deposit-settings', [AdminDepositSettingsController::class, 'destroy'])->name('deposit-settings.destroy');

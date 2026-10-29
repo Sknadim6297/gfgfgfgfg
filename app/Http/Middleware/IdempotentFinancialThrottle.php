@@ -4,11 +4,11 @@ namespace App\Http\Middleware;
 
 use App\Models\Deposit;
 use App\Models\ExchangeRequest;
-use App\Models\InternalUsdtTransfer;
 use App\Models\User;
 use App\Models\WithdrawalRequest;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -30,7 +30,7 @@ class IdempotentFinancialThrottle
             && Str::isUuid($submissionKey)
             && $this->submissionExists($submissionType, $user, $submissionKey)
         ) {
-            return app(\Illuminate\Routing\Middleware\ThrottleRequests::class)->handle(
+            return app(ThrottleRequests::class)->handle(
                 $request,
                 $next,
                 $maxAttempts,
@@ -39,7 +39,7 @@ class IdempotentFinancialThrottle
             );
         }
 
-        return app(\Illuminate\Routing\Middleware\ThrottleRequests::class)->handle(
+        return app(ThrottleRequests::class)->handle(
             $request,
             $next,
             $maxAttempts,
@@ -61,10 +61,6 @@ class IdempotentFinancialThrottle
                 ->exists(),
             'withdrawal' => WithdrawalRequest::query()
                 ->where('user_id', $user->id)
-                ->where('submission_key', $submissionKey)
-                ->exists(),
-            'transfer' => InternalUsdtTransfer::query()
-                ->where('sender_user_id', $user->id)
                 ->where('submission_key', $submissionKey)
                 ->exists(),
             default => throw new \InvalidArgumentException('Unknown financial submission type.'),

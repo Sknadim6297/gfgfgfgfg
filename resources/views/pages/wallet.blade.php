@@ -45,9 +45,6 @@
                 <a class="profile-action-button profile-bank-action" href="{{ route('deposit.create') }}">
                     <i class="bi bi-plus-circle" aria-hidden="true"></i><span>Add Funds</span><i class="bi bi-arrow-right" aria-hidden="true"></i>
                 </a>
-                <a class="profile-action-button profile-sell-action wallet-withdraw-action" href="{{ route('wallet.transfers.index') }}">
-                    <i class="bi bi-send" aria-hidden="true"></i><span>Transfer USDT</span><i class="bi bi-arrow-right" aria-hidden="true"></i>
-                </a>
                 @if ($canWithdraw)
                     <a class="profile-action-button profile-sell-action wallet-withdraw-action" href="{{ route('wallet.withdrawals.create') }}">
                         <i class="bi bi-bank" aria-hidden="true"></i><span>Withdraw INR</span><i class="bi bi-arrow-right" aria-hidden="true"></i>

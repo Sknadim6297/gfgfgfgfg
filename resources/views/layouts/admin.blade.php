@@ -23,8 +23,6 @@
             request()->routeIs('admin.deposits.index') => 'Deposit management',
             request()->routeIs('admin.withdrawals.show') => 'Withdrawal review',
             request()->routeIs('admin.withdrawals.index') => 'Withdrawal management',
-            request()->routeIs('admin.internal-transfers.settings') => 'Transfer settings',
-            request()->routeIs('admin.internal-transfers.index') => 'Internal transfers',
             request()->routeIs('admin.support-tickets.show') => 'Support ticket',
             request()->routeIs('admin.support-tickets.index') => 'Support tickets',
             request()->routeIs('admin.push-notifications.*') => 'Push notifications',
@@ -51,7 +49,6 @@
                 <a href="{{ route('admin.exchanges.index') }}" class="{{ request()->routeIs('admin.exchanges*') ? 'active' : '' }}" @if (request()->routeIs('admin.exchanges*')) aria-current="page" @endif><i class="bi bi-arrow-left-right" aria-hidden="true"></i><span>Sell Requests</span></a>
                 <a href="{{ route('admin.deposits.index') }}" class="{{ request()->routeIs('admin.deposits*') ? 'active' : '' }}" @if (request()->routeIs('admin.deposits*')) aria-current="page" @endif><i class="bi bi-wallet2" aria-hidden="true"></i><span>Deposits</span></a>
                 <a href="{{ route('admin.withdrawals.index') }}" class="{{ request()->routeIs('admin.withdrawals*') ? 'active' : '' }}" @if (request()->routeIs('admin.withdrawals*')) aria-current="page" @endif><i class="bi bi-bank" aria-hidden="true"></i><span>Withdrawals</span></a>
-                <a href="{{ route('admin.internal-transfers.index') }}" class="{{ request()->routeIs('admin.internal-transfers*') ? 'active' : '' }}" @if (request()->routeIs('admin.internal-transfers*')) aria-current="page" @endif><i class="bi bi-arrow-left-right" aria-hidden="true"></i><span>USDT Transfers</span></a>
                 <a href="{{ route('admin.support-tickets.index') }}" class="{{ request()->routeIs('admin.support-tickets*') ? 'active' : '' }}" @if (request()->routeIs('admin.support-tickets*')) aria-current="page" @endif><i class="bi bi-headset" aria-hidden="true"></i><span>Support Tickets</span></a>
                 <a href="{{ route('admin.push-notifications.index') }}" class="{{ request()->routeIs('admin.push-notifications.*') ? 'active' : '' }}" @if (request()->routeIs('admin.push-notifications.*')) aria-current="page" @endif><i class="bi bi-bell" aria-hidden="true"></i><span>Push Notifications</span></a>
                 <a href="{{ route('admin.notices.index') }}" class="{{ request()->routeIs('admin.notices.*') ? 'active' : '' }}" @if (request()->routeIs('admin.notices.*')) aria-current="page" @endif><i class="bi bi-megaphone" aria-hidden="true"></i><span>Notice Management</span></a>
