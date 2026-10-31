@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\ExchangeRate;
+use App\Support\Decimal;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,12 @@ use Illuminate\View\View;
 
 class AdminRateController extends Controller
 {
+    private const FIXED_SLABS = [
+        'base' => ['minimum' => '0', 'maximum' => '9999.99999999'],
+        'prime' => ['minimum' => '10000', 'maximum' => '19999.99999999'],
+        'vip' => ['minimum' => '20000', 'maximum' => null],
+    ];
+
     private const ICONS = [
         'bi-currency-exchange',
         'bi-diamond-fill',
@@ -75,23 +82,7 @@ class AdminRateController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $this->validatedPlan($request);
-        $admin = $request->user('admin');
-
-        $this->savePlanTransaction(function () use ($request, $validated, $admin): void {
-            ExchangeRate::query()->orderBy('id')->lockForUpdate()->get(['id']);
-            $this->assertNoActiveOverlap($validated);
-            $this->assertMinimumAvailable($validated['minimum_amount']);
-            $plan = ExchangeRate::create([
-                ...$validated,
-                'pair' => 'USDT_INR',
-                'is_default' => false,
-                'updated_by_user_id' => $admin->id,
-            ]);
-            $this->recordPlanChange($request, $admin->id, 'admin.exchange_rate_plan_created', $plan, null);
-        }, $validated);
-
-        return back()->with('status', 'Exchange rate plan created.');
+        return back()->with('error', 'Only the Base, Prime, and VIP rate plans are available.');
     }
 
     public function update(Request $request): RedirectResponse
@@ -203,6 +194,15 @@ class AdminRateController extends Controller
 
     private function validatedPlan(Request $request, ?ExchangeRate $plan = null): array
     {
+        $normalized = [
+            'rate' => $this->plainDecimal($request->input('rate')),
+            'minimum_amount' => $this->plainDecimal($request->input('minimum_amount')),
+        ];
+        if ($request->exists('maximum_amount')) {
+            $normalized['maximum_amount'] = $this->plainDecimal($request->input('maximum_amount'));
+        }
+        $request->merge($normalized);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120', Rule::unique('exchange_rates', 'name')->ignore($plan?->id)],
             'rate' => ['required', 'string', 'regex:/^(?=.*[1-9])\d{1,12}(?:\.\d{1,8})?$/'],
@@ -227,20 +227,54 @@ class AdminRateController extends Controller
 
         if (
             $validated['maximum_amount'] !== null
-            && \App\Support\Decimal::compare($validated['maximum_amount'], $validated['minimum_amount'], 8) < 0
+            && Decimal::compare($validated['maximum_amount'], $validated['minimum_amount'], 8) < 0
         ) {
             throw ValidationException::withMessages([
                 'maximum_amount' => 'The maximum amount must be greater than or equal to the minimum amount.',
             ]);
         }
 
-        if ($plan?->plan_key === 'base' && \App\Support\Decimal::compare($validated['minimum_amount'], '0', 8) !== 0) {
+        if ($plan?->plan_key === 'base' && Decimal::compare($validated['minimum_amount'], '0', 8) !== 0) {
             throw ValidationException::withMessages([
                 'minimum_amount' => 'The Base Rate minimum amount must remain 0.',
             ]);
         }
 
+        if ($plan !== null) {
+            $this->assertFixedSlab($plan, $validated);
+        }
+
         return $validated;
+    }
+
+    private function assertFixedSlab(ExchangeRate $plan, array $validated): void
+    {
+        $slab = self::FIXED_SLABS[$plan->plan_key] ?? null;
+        if ($slab === null) {
+            return;
+        }
+
+        $minimumMatches = Decimal::compare($validated['minimum_amount'], $slab['minimum'], 8) === 0;
+        $maximumMatches = $slab['maximum'] === null
+            ? $validated['maximum_amount'] === null
+            : $validated['maximum_amount'] !== null
+                && Decimal::compare($validated['maximum_amount'], $slab['maximum'], 8) === 0;
+
+        if ($minimumMatches && $maximumMatches) {
+            return;
+        }
+
+        $message = match ($plan->plan_key) {
+            'base' => 'Base covers amounts from 0 USDT up to below 10,000 USDT. That range cannot be changed.',
+            'prime' => 'Prime covers amounts from 10,000 USDT up to below 20,000 USDT. That range cannot be changed.',
+            'vip' => 'VIP covers amounts of 20,000 USDT and above. That range cannot be changed.',
+            default => 'This rate plan range cannot be changed.',
+        };
+
+        throw ValidationException::withMessages([
+            'minimum_amount' => $message,
+            'maximum_amount' => $message,
+        ]);
     }
 
     private function assertNoActiveOverlap(array $candidate, ?int $ignoreId = null): void
@@ -252,28 +286,47 @@ class AdminRateController extends Controller
         $plans = ExchangeRate::query()
             ->where('is_active', true)
             ->when($ignoreId !== null, fn ($query) => $query->where('id', '<>', $ignoreId))
-            ->get(['minimum_amount', 'maximum_amount']);
+            ->orderBy('minimum_amount')
+            ->orderBy('id')
+            ->get(['id', 'name', 'minimum_amount', 'maximum_amount']);
 
         foreach ($plans as $plan) {
-            $candidateStartsBeforePlanEnds = $candidate['maximum_amount'] === null
-                || \App\Support\Decimal::compare(
-                    (string) $plan->minimum_amount,
-                    $candidate['maximum_amount'],
-                    8,
-                ) <= 0;
-            $planStartsBeforeCandidateEnds = $plan->maximum_amount === null
-                || \App\Support\Decimal::compare(
-                    (string) $plan->maximum_amount,
-                    $candidate['minimum_amount'],
-                    8,
-                ) >= 0;
-
-            if ($candidateStartsBeforePlanEnds && $planStartsBeforeCandidateEnds) {
-                throw ValidationException::withMessages([
-                    'maximum_amount' => 'Active rate slabs cannot overlap.',
-                ]);
+            if (! $this->rangesOverlap(
+                $candidate['minimum_amount'],
+                $candidate['maximum_amount'],
+                (string) $plan->minimum_amount,
+                $plan->maximum_amount === null ? null : (string) $plan->maximum_amount,
+            )) {
+                continue;
             }
+
+            $message = $this->overlapMessage($plan);
+
+            throw ValidationException::withMessages([
+                'minimum_amount' => $message,
+                'maximum_amount' => $message,
+            ]);
         }
+    }
+
+    private function rangesOverlap(string $leftMinimum, ?string $leftMaximum, string $rightMinimum, ?string $rightMaximum): bool
+    {
+        $leftStartsBeforeRightEnds = $leftMaximum === null
+            || Decimal::compare($rightMinimum, $leftMaximum, 8) <= 0;
+        $rightStartsBeforeLeftEnds = $rightMaximum === null
+            || Decimal::compare($rightMaximum, $leftMinimum, 8) >= 0;
+
+        return $leftStartsBeforeRightEnds && $rightStartsBeforeLeftEnds;
+    }
+
+    private function overlapMessage(ExchangeRate $plan): string
+    {
+        $minimum = ExchangeRate::formatDecimal((string) $plan->minimum_amount);
+        $range = $plan->maximum_amount === null
+            ? $minimum.' USDT and above'
+            : $minimum.' to '.ExchangeRate::formatDecimal((string) $plan->maximum_amount).' USDT';
+
+        return 'This range overlaps the active plan '.$plan->name.' ('.$range.'). Active slabs include both endpoints. Narrow that plan or choose a range outside it.';
     }
 
     private function assertMinimumAvailable(string $minimum, ?int $ignoreId = null): void
@@ -283,7 +336,20 @@ class AdminRateController extends Controller
             $query->where('id', '<>', $ignoreId);
         }
 
-        abort_if($query->exists(), 422, 'Each rate plan must have a unique minimum amount.');
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'minimum_amount' => 'Each rate plan must have a unique minimum amount.',
+            ]);
+        }
+    }
+
+    private function plainDecimal(mixed $value): mixed
+    {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        return str_replace([',', ' '], '', trim($value));
     }
 
     private function normalizeMinimum(string $minimum): string

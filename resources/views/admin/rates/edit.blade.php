@@ -7,11 +7,8 @@
         <div>
             <span class="admin-eyebrow">PLATFORM CONFIGURATION</span>
             <h1>Exchange rates</h1>
-            <p>Manage informational USDT to INR reference rates. These are not guaranteed live market quotes.</p>
+            <p>Manage the Base, Prime, and VIP USDT to INR reference rates. These are not guaranteed live market quotes.</p>
         </div>
-        <button class="admin-button" type="button" data-bs-toggle="modal" data-bs-target="#ratePlanModal" data-modal-mode="create">
-            <i class="bi bi-plus-lg" aria-hidden="true"></i> Add New Rate Plan
-        </button>
     </div>
 
     <p class="admin-summary-note">All-time plan counts; the filters below only affect the plan list. Rates are INR per USDT, not transaction totals.</p>
@@ -57,7 +54,7 @@
             @endif
         </form>
         @if ($plans->isEmpty())
-            <div class="admin-empty-state"><span><i class="bi bi-currency-exchange" aria-hidden="true"></i></span><strong>No rate plans configured</strong><p>Add a plan to display a reference rate publicly.</p></div>
+            <div class="admin-empty-state"><span><i class="bi bi-currency-exchange" aria-hidden="true"></i></span><strong>No rate plans match these filters</strong><p>Base, Prime, and VIP remain available when the filters include them.</p></div>
         @else
             <div class="admin-table-wrap">
                 <table class="admin-table admin-rate-table">
@@ -104,8 +101,8 @@
                                             data-update-url="{{ route('admin.rates.plans.update', $plan) }}"
                                             data-name="{{ $plan->name }}"
                                             data-rate="{{ $plan->formattedRate() }}"
-                                            data-minimum="{{ $plan->formattedMinimumAmount() }}"
-                                            data-maximum="{{ $plan->formattedMaximumAmount() }}"
+                                            data-minimum="{{ \App\Models\ExchangeRate::formatDecimal($plan->minimum_amount) }}"
+                                            data-maximum="{{ $plan->maximum_amount === null ? '' : \App\Models\ExchangeRate::formatDecimal($plan->maximum_amount) }}"
                                             data-label="{{ $plan->label }}"
                                             data-icon="{{ $plan->icon }}"
                                             data-description="{{ $plan->description }}"
@@ -186,30 +183,40 @@
                     <input type="hidden" name="_method" id="ratePlanMethod" value="POST">
                     <input type="hidden" name="plan_id" id="ratePlanId" value="{{ old('plan_id') }}">
                     <div class="modal-header">
-                        <div><span class="admin-eyebrow">PLATFORM CONFIGURATION</span><h2 class="modal-title" id="ratePlanModalTitle">Add New Rate Plan</h2></div>
+                        <div><span class="admin-eyebrow">PLATFORM CONFIGURATION</span><h2 class="modal-title" id="ratePlanModalTitle">Edit rate plan</h2></div>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        @if ($errors->any())
+                            <div class="admin-rate-modal-errors" role="alert">
+                                <strong>This rate plan was not saved.</strong>
+                                <ul>
+                                    @foreach (collect($errors->all())->unique() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
                         <div class="admin-rate-form-grid">
                             <div>
                                 <label for="rate-plan-name">Plan Name</label>
-                                <input class="portal-input" id="rate-plan-name" name="name" value="{{ old('name') }}" maxlength="120" required>
-                                @error('name')<span class="admin-field-error">{{ $message }}</span>@enderror
+                                <input class="portal-input @error('name') is-invalid @enderror" id="rate-plan-name" name="name" value="{{ old('name') }}" maxlength="120" required @if ($errors->has('name')) aria-invalid="true" aria-describedby="rate-plan-name-error" @endif>
+                                @error('name')<span class="admin-field-error" id="rate-plan-name-error">{{ $message }}</span>@enderror
                             </div>
                             <div>
                                 <label for="rate-plan-rate">INR per USDT</label>
-                                <input class="portal-input" id="rate-plan-rate" name="rate" inputmode="decimal" value="{{ old('rate') }}" required>
-                                @error('rate')<span class="admin-field-error">{{ $message }}</span>@enderror
+                                <input class="portal-input @error('rate') is-invalid @enderror" id="rate-plan-rate" name="rate" inputmode="decimal" value="{{ old('rate') }}" required @if ($errors->has('rate')) aria-invalid="true" aria-describedby="rate-plan-rate-error" @endif>
+                                @error('rate')<span class="admin-field-error" id="rate-plan-rate-error">{{ $message }}</span>@enderror
                             </div>
                             <div>
                                 <label for="rate-plan-minimum">Minimum Amount (USDT) — From</label>
-                                <input class="portal-input" id="rate-plan-minimum" name="minimum_amount" inputmode="decimal" value="{{ old('minimum_amount') }}" required>
-                                @error('minimum_amount')<span class="admin-field-error">{{ $message }}</span>@enderror
+                                <input class="portal-input @error('minimum_amount') is-invalid @enderror" id="rate-plan-minimum" name="minimum_amount" inputmode="decimal" value="{{ old('minimum_amount') }}" required readonly @if ($errors->has('minimum_amount')) aria-invalid="true" aria-describedby="rate-plan-minimum-error" @endif>
+                                @error('minimum_amount')<span class="admin-field-error" id="rate-plan-minimum-error">{{ $message }}</span>@enderror
                             </div>
                             <div>
                                 <label for="rate-plan-maximum">Maximum Amount (USDT) — Upto</label>
-                                <input class="portal-input" id="rate-plan-maximum" name="maximum_amount" inputmode="decimal" value="{{ old('maximum_amount') }}" placeholder="Leave blank for no limit">
-                                @error('maximum_amount')<span class="admin-field-error">{{ $message }}</span>@enderror
+                                <input class="portal-input @error('maximum_amount') is-invalid @enderror" id="rate-plan-maximum" name="maximum_amount" inputmode="decimal" value="{{ old('maximum_amount') }}" placeholder="No limit" readonly @if ($errors->has('maximum_amount')) aria-invalid="true" aria-describedby="rate-plan-maximum-error" @endif>
+                                @error('maximum_amount')<span class="admin-field-error" id="rate-plan-maximum-error">{{ $message }}</span>@enderror
                             </div>
                             <div>
                                 <label for="rate-plan-label">Rate Label</label>
@@ -239,11 +246,11 @@
                                 @error('is_active')<span class="admin-field-error">{{ $message }}</span>@enderror
                             </div>
                         </div>
-                        <p class="admin-form-help">Rate: positive, up to 8 decimal places. Slab boundaries: non-negative, up to 2 decimal places. Active slabs cannot overlap. Leave Upto blank for no limit. Base Rate must start at 0.</p>
+                        <p class="admin-form-help">Base covers amounts below 10,000 USDT, Prime covers 10,000 up to below 20,000 USDT, and VIP covers 20,000 USDT and above. These ranges stay fixed. Editing the INR rate does not change past exchange requests.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="admin-button admin-button-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="admin-button"><i class="bi bi-check2" aria-hidden="true"></i> <span id="ratePlanSubmitLabel">Create plan</span></button>
+                        <button type="submit" class="admin-button"><i class="bi bi-check2" aria-hidden="true"></i> <span id="ratePlanSubmitLabel">Save changes</span></button>
                     </div>
                 </form>
             </div>
@@ -274,27 +281,24 @@
                 description: document.getElementById('rate-plan-description'),
                 active: document.getElementById('rate-plan-active'),
             };
-            const createAction = @json(route('admin.rates.store'));
             const oldPlanId = @json(old('plan_id'));
-            const setPlan = (button, reopen = false) => {
-                const editing = button?.dataset.modalMode === 'edit';
-                form.action = editing ? button.dataset.updateUrl : createAction;
-                method.value = editing ? 'PUT' : 'POST';
-                title.textContent = editing ? `Edit ${button.dataset.name}` : 'Add New Rate Plan';
-                submitLabel.textContent = editing ? 'Save changes' : 'Create plan';
-                fields.id.value = editing ? button.dataset.planId : '';
-                fields.name.value = editing ? button.dataset.name : '';
-                fields.rate.value = editing ? button.dataset.rate : '';
-                fields.minimum.value = editing ? button.dataset.minimum : '';
-                fields.maximum.value = editing ? button.dataset.maximum : '';
-                fields.label.value = editing ? button.dataset.label : '';
-                fields.icon.value = editing ? button.dataset.icon : 'bi-currency-exchange';
-                fields.description.value = editing ? button.dataset.description : '';
-                fields.active.checked = editing ? button.dataset.active === '1' : true;
-                if (reopen) modal.show();
+            const setPlan = (button) => {
+                form.action = button.dataset.updateUrl;
+                method.value = 'PUT';
+                title.textContent = `Edit ${button.dataset.name}`;
+                submitLabel.textContent = 'Save changes';
+                fields.id.value = button.dataset.planId;
+                fields.name.value = button.dataset.name;
+                fields.rate.value = button.dataset.rate;
+                fields.minimum.value = button.dataset.minimum;
+                fields.maximum.value = button.dataset.maximum;
+                fields.label.value = button.dataset.label;
+                fields.icon.value = button.dataset.icon;
+                fields.description.value = button.dataset.description;
+                fields.active.checked = button.dataset.active === '1';
             };
 
-            document.querySelectorAll('[data-modal-mode="create"], [data-modal-mode="edit"]').forEach((button) => {
+            document.querySelectorAll('[data-modal-mode="edit"]').forEach((button) => {
                 button.addEventListener('click', () => setPlan(button));
             });
 
@@ -302,8 +306,6 @@
                 if (oldPlanId) {
                     const editButton = document.querySelector(`[data-modal-mode="edit"][data-plan-id="${CSS.escape(String(oldPlanId))}"]`);
                     if (editButton) setPlan(editButton);
-                } else {
-                    setPlan(null);
                 }
                 fields.name.value = @json(old('name'));
                 fields.rate.value = @json(old('rate'));
@@ -314,6 +316,9 @@
                 fields.description.value = @json(old('description'));
                 fields.active.checked = @json((string) old('is_active', '1') === '1');
                 modal.show();
+                modalElement.addEventListener('shown.bs.modal', () => {
+                    modalElement.querySelector('.is-invalid')?.focus({ preventScroll: false });
+                }, { once: true });
             @endif
         })();
     </script>

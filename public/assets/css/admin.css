@@ -1672,11 +1672,41 @@
 
 .admin-rate-modal-errors {
     margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid rgba(232, 95, 87, .45);
+    border-radius: 10px;
+    background: rgba(117, 34, 30, .28);
+    color: #ffb1aa;
+}
+
+.admin-rate-modal-errors strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #ffd0cc;
+    font-size: 14px;
 }
 
 .admin-rate-modal-errors ul {
     margin: 0;
     padding-left: 18px;
+}
+
+.admin-rate-modal-errors li + li {
+    margin-top: 4px;
+}
+
+.admin-rate-modal .admin-field-error {
+    display: block;
+    margin-top: 6px;
+}
+
+.admin-rate-modal .portal-input.is-invalid {
+    border-color: #e85f57;
+}
+
+.admin-rate-modal .portal-input[readonly] {
+    color: #b9b6ad;
+    background: #161616;
 }
 
 .admin-rate-modal .admin-rate-form-grid {
@@ -1955,6 +1985,39 @@
 
     .admin-rate-modal .modal-footer .admin-button {
         width: 100%;
+    }
+
+    .admin-rate-page-heading > .admin-button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .admin-rate-modal .modal-dialog {
+        margin: 12px auto;
+        max-width: calc(100% - 24px);
+    }
+
+    .admin-rate-modal .modal-content,
+    .admin-rate-modal form {
+        max-height: calc(100dvh - 24px);
+    }
+
+    .admin-rate-modal form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .admin-rate-modal .modal-body {
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .admin-rate-modal .portal-input {
+        font-size: 16px;
+    }
+
+    .admin-rate-actions {
+        flex-wrap: wrap;
     }
 }
 

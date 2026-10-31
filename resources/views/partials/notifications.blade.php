@@ -14,7 +14,7 @@
 
     $payload = [
         'notice' => $notice,
-        'errors' => $errors->all(),
+        'errors' => collect($errors->all())->unique()->values()->all(),
     ];
 @endphp
 <script id="quickpay-notifications" type="application/json">{!! json_encode($payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!}</script>
